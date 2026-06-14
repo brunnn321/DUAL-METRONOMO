@@ -27,7 +27,7 @@ const SOUNDS = [
   { key:"rim",   label:"RIM"   }, { key:"hat",   label:"HAT"   },
 ];
 
-const BASE_VALUES    = [2, 3, 4, 5, 6, 7, 8];
+const BASE_VALUES     = [2, 3, 4, 5, 6, 7, 8];
 const DERIVADO_VALUES = [2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 15];
 
 const POLY_NAMES = {
@@ -44,11 +44,12 @@ const POLY_NAMES = {
   "15:8": { name:"Quindecillo",  cat:"Polirritmia" },
   "8:15": { name:"Quindecillo",  cat:"Polirritmia" },
 };
-
 const getPolyInfo = (a, b) =>
   POLY_NAMES[`${a}:${b}`] ?? POLY_NAMES[`${b}:${a}`] ?? { name:"Relación personalizada", cat:"Polirritmia" };
 
 const STORAGE_KEY = "dual-metronomo-v3";
+// params that require a scheduler restart to stay in sync
+const NEEDS_RESTART = new Set(["bpm", "timeSig", "subdivision"]);
 
 // ─── audio ────────────────────────────────────────────────────────────────────
 function synthClick(ctx, time, soundKey, volume) {
@@ -80,20 +81,17 @@ function synthClick(ctx, time, soundKey, volume) {
 // ─── mode selector ────────────────────────────────────────────────────────────
 function ModeSelector({ mode, setMode }) {
   return (
-    <div style={{
-      display: "flex", background: "#1a1c22", borderRadius: 8, padding: 3,
-      maxWidth: 360, margin: "0 auto", gap: 2,
-    }}>
-      {[["libre","DUAL LIBRE"],["metrica","RELACIÓN MÉTRICA"]].map(([k, lbl]) => {
+    <div style={{ display:"flex", background:"#1a1c22", borderRadius:8, padding:3, maxWidth:340, margin:"0 auto", gap:2 }}>
+      {[["metrica","POLIMETRÍA"],["libre","DUAL LIBRE"]].map(([k, lbl]) => {
         const on = mode === k;
         return (
           <button key={k} onClick={() => setMode(k)} style={{
-            flex: 1, background: on ? "#252830" : "none",
-            border: `1px solid ${on ? "#3a3d47" : "transparent"}`,
-            borderRadius: 6, color: on ? "#ddd" : "#444",
-            fontFamily: "'JetBrains Mono',monospace", fontSize: 10,
-            fontWeight: on ? 600 : 400, padding: "8px 10px",
-            cursor: "pointer", letterSpacing: 0.5, transition: "all 0.15s",
+            flex:1, background: on ? "#252830" : "none",
+            border:`1px solid ${on ? "#3a3d47" : "transparent"}`,
+            borderRadius:6, color: on ? "#ddd" : "#444",
+            fontFamily:"'JetBrains Mono',monospace", fontSize:10,
+            fontWeight: on ? 600 : 400, padding:"8px 10px",
+            cursor:"pointer", letterSpacing:0.5, transition:"all 0.15s",
           }}>{lbl}</button>
         );
       })}
@@ -121,17 +119,16 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
 
   const ring = (total, r, activeBeat, color) => {
     const dr = total <= 8 ? 7 : total <= 12 ? 5 : 4;
-    return Array.from({ length: total }, (_, i) => {
+    return Array.from({ length:total }, (_, i) => {
       const a = (i / total) * 2 * Math.PI - Math.PI / 2;
       const x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
       const on = activeBeat === i;
       return (
         <g key={i}>
-          {on && <circle cx={x} cy={y} r={dr + 6} fill={`${color}1a`} />}
-          <circle cx={x} cy={y} r={i === 0 ? dr + 1 : dr}
+          {on && <circle cx={x} cy={y} r={dr+6} fill={`${color}1a`} />}
+          <circle cx={x} cy={y} r={i === 0 ? dr+1 : dr}
             fill={on ? color : i === 0 ? `${color}55` : `${color}22`}
-            style={{ filter: on ? `drop-shadow(0 0 5px ${color})` : "none", transition: "fill 0.05s" }}
-          />
+            style={{ filter: on ? `drop-shadow(0 0 5px ${color})` : "none", transition:"fill 0.05s" }} />
         </g>
       );
     });
@@ -140,26 +137,24 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
   const label = centerLabel ?? `${totalA}:${totalB}`;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-      <svg width={S} height={S} style={{ overflow: "visible" }}>
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
+      <svg width={S} height={S} style={{ overflow:"visible" }}>
         <circle cx={cx} cy={cy} r={rA} fill="none" stroke={`${CA}18`} strokeWidth={1.5} />
         <circle cx={cx} cy={cy} r={rB} fill="none" stroke={`${CB}18`} strokeWidth={1.5} />
         {coincide && <circle cx={cx} cy={cy} r={42} fill="#ffffff07" stroke="#ffffff22" strokeWidth={1.5} />}
         {ring(totalA, rA, metA.beat, CA)}
         {ring(totalB, rB, metB.beat, CB)}
-        <text x={cx} y={cy - 8} textAnchor="middle"
+        <text x={cx} y={cy-8} textAnchor="middle"
           fill={coincide ? "#fff" : "#777"} fontSize={20}
           fontFamily="'JetBrains Mono',monospace" fontWeight="700"
-          style={{ transition: "fill 0.2s" }}>
-          {label}
-        </text>
-        <text x={cx} y={cy + 9} textAnchor="middle" fill="#444" fontSize={9} fontFamily="monospace">
+          style={{ transition:"fill 0.2s" }}>{label}</text>
+        <text x={cx} y={cy+9} textAnchor="middle" fill="#444" fontSize={9} fontFamily="monospace">
           MCM = {lcmAB}
         </text>
-        <circle cx={cx - 36} cy={S - 14} r={3.5} fill={CA} />
-        <text x={cx - 28} y={S - 10} fill="#444" fontSize={9} fontFamily="monospace">MET A</text>
-        <circle cx={cx + 14} cy={S - 14} r={3.5} fill={CB} />
-        <text x={cx + 22} y={S - 10} fill="#444" fontSize={9} fontFamily="monospace">MET B</text>
+        <circle cx={cx-36} cy={S-14} r={3.5} fill={CA} />
+        <text x={cx-28} y={S-10} fill="#444" fontSize={9} fontFamily="monospace">MET A</text>
+        <circle cx={cx+14} cy={S-14} r={3.5} fill={CB} />
+        <text x={cx+22} y={S-10} fill="#444" fontSize={9} fontFamily="monospace">MET B</text>
       </svg>
       {showSubtitle !== false && (
         <div style={{ fontFamily:"monospace", fontSize:11, color:"#555", textAlign:"center" }}>
@@ -173,37 +168,35 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
   );
 }
 
-// ─── relación métrica panel ───────────────────────────────────────────────────
-function MetricRelationPanel({ bpmBase, setBpmBase, base, setBase, derivado, setDerivado }) {
-  const ratio    = `${derivado}:${base}`;
-  const bpmB     = bpmBase * derivado / base;
-  const poly     = getPolyInfo(derivado, base);
-  const lcmAB    = lcm(base, derivado);
-  const ciclos   = lcmAB / base;
-  const fmtBpm   = (v) => Number.isInteger(v) ? v : v.toFixed(2);
+// ─── polimetría panel ─────────────────────────────────────────────────────────
+function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
+  const ratio  = `${derivado}:${base}`;
+  const bpmB   = bpmBase * derivado / base;
+  const poly   = getPolyInfo(derivado, base);
+  const lcmAB  = lcm(base, derivado);
+  const ciclos = lcmAB / base;
+  const fmtBpm = (v) => Number.isInteger(v) ? v : v.toFixed(2);
 
   return (
     <div style={{
-      background: "#1e2028", borderRadius: 12, padding: "20px 24px",
-      maxWidth: 680, margin: "0 auto",
-      display: "flex", flexDirection: "column", gap: 18,
+      background:"#1e2028", borderRadius:12, padding:"20px 24px",
+      maxWidth:680, margin:"0 auto",
+      display:"flex", flexDirection:"column", gap:18,
     }}>
-
       {/* BPM base */}
       <div>
         <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:2, marginBottom:8 }}>BPM BASE</div>
         <div style={{ display:"flex", alignItems:"center", gap:16 }}>
-          <div style={{
-            fontFamily:"'JetBrains Mono',monospace", fontSize:52, fontWeight:700,
-            color:"#ff6b4a", lineHeight:1, minWidth:96,
-          }}>{bpmBase}</div>
+          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:52, fontWeight:700, color:"#ff6b4a", lineHeight:1, minWidth:96 }}>
+            {bpmBase}
+          </div>
           <div style={{ flex:1, display:"flex", flexDirection:"column", gap:6 }}>
             <input type="range" min={30} max={300} value={bpmBase}
-              onChange={(e) => setBpmBase(parseInt(e.target.value))}
+              onChange={(e) => onBpmBase(parseInt(e.target.value))}
               style={{ width:"100%", accentColor:"#ff6b4a" }} />
             <div style={{ display:"flex", gap:5 }}>
               {[-10,-1,+1,+10].map((d) => (
-                <button key={d} onClick={() => setBpmBase((v) => Math.min(300, Math.max(30, v + d)))} style={{
+                <button key={d} onClick={() => onBpmBase(Math.min(300, Math.max(30, bpmBase + d)))} style={{
                   background:"#252830", border:"1px solid #ff6b4a33", borderRadius:5,
                   color:"#ff6b4a", fontFamily:"monospace", fontSize:11, padding:"4px 9px", cursor:"pointer",
                 }}>{d > 0 ? `+${d}` : d}</button>
@@ -223,7 +216,7 @@ function MetricRelationPanel({ bpmBase, setBpmBase, base, setBase, derivado, set
             {BASE_VALUES.map((v) => {
               const on = v === base;
               return (
-                <button key={v} onClick={() => setBase(v)} style={{
+                <button key={v} onClick={() => onBase(v)} style={{
                   background: on ? "#ff6b4a" : "#252830",
                   border:`1px solid ${on ? "#ff6b4a" : "#3a3d47"}`,
                   borderRadius:6, color: on ? "#15171c" : "#666",
@@ -242,7 +235,7 @@ function MetricRelationPanel({ bpmBase, setBpmBase, base, setBase, derivado, set
             {DERIVADO_VALUES.map((v) => {
               const on = v === derivado;
               return (
-                <button key={v} onClick={() => setDerivado(v)} style={{
+                <button key={v} onClick={() => onDeriv(v)} style={{
                   background: on ? "#4ad9ff" : "#252830",
                   border:`1px solid ${on ? "#4ad9ff" : "#3a3d47"}`,
                   borderRadius:6, color: on ? "#15171c" : "#666",
@@ -255,7 +248,7 @@ function MetricRelationPanel({ bpmBase, setBpmBase, base, setBase, derivado, set
         </div>
       </div>
 
-      {/* info grid */}
+      {/* info */}
       <div style={{
         background:"#15171c", borderRadius:8, padding:"16px 20px",
         display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px 32px",
@@ -263,36 +256,26 @@ function MetricRelationPanel({ bpmBase, setBpmBase, base, setBase, derivado, set
       }}>
         <div>
           <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>RELACIÓN</div>
-          <div style={{ color:"#eee", fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, marginTop:3 }}>
-            {ratio}
-          </div>
+          <div style={{ color:"#eee", fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, marginTop:3 }}>{ratio}</div>
         </div>
         <div>
           <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>NOMBRE</div>
-          <div style={{ color:"#ccc", fontFamily:"monospace", fontSize:14, fontWeight:600, marginTop:3 }}>
-            {poly.name}
-          </div>
+          <div style={{ color:"#ccc", fontFamily:"monospace", fontSize:14, fontWeight:600, marginTop:3 }}>{poly.name}</div>
         </div>
         <div>
           <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>BPM DERIVADO</div>
-          <div style={{ color:"#4ad9ff", fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, marginTop:3 }}>
-            {fmtBpm(bpmB)}
-          </div>
+          <div style={{ color:"#4ad9ff", fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, marginTop:3 }}>{fmtBpm(bpmB)}</div>
         </div>
         <div>
           <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>CATEGORÍA</div>
-          <div style={{ color:"#777", fontFamily:"monospace", fontSize:13, marginTop:3 }}>
-            {poly.cat}
-          </div>
+          <div style={{ color:"#777", fontFamily:"monospace", fontSize:13, marginTop:3 }}>{poly.cat}</div>
         </div>
         <div style={{ gridColumn:"1 / -1", borderTop:"1px solid #1e2028", paddingTop:12 }}>
           <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1, marginBottom:4 }}>COINCIDENCIA</div>
           <div style={{ color:"#666", fontFamily:"monospace", fontSize:12, lineHeight:1.8 }}>
-            Coinciden cada{" "}
-            <span style={{ color:"#ddd", fontWeight:700 }}>{lcmAB}</span> subdivisiones
+            Coinciden cada <span style={{ color:"#ddd", fontWeight:700 }}>{lcmAB}</span> subdivisiones
             <span style={{ margin:"0 10px", color:"#333" }}>·</span>
-            Ciclo completo cada{" "}
-            <span style={{ color:"#ddd", fontWeight:700 }}>{ciclos}</span> ciclos base
+            Ciclo completo cada <span style={{ color:"#ddd", fontWeight:700 }}>{ciclos}</span> ciclos base
           </div>
         </div>
       </div>
@@ -304,9 +287,7 @@ function MetricRelationPanel({ bpmBase, setBpmBase, base, setBase, derivado, set
 function PolyPresets({ onSelect, active }) {
   return (
     <div style={{ textAlign:"center" }}>
-      <div style={{ color:"#444", fontSize:9, fontFamily:"monospace", letterSpacing:2, marginBottom:8 }}>
-        PRESETS DE POLIMETRÍA
-      </div>
+      <div style={{ color:"#444", fontSize:9, fontFamily:"monospace", letterSpacing:2, marginBottom:8 }}>PRESETS DE POLIMETRÍA</div>
       <div style={{ display:"flex", gap:6, justifyContent:"center", flexWrap:"wrap" }}>
         {POLY_PRESETS.map((p) => {
           const on = active === p.label;
@@ -325,7 +306,7 @@ function PolyPresets({ onSelect, active }) {
   );
 }
 
-// ─── generic picker ───────────────────────────────────────────────────────────
+// ─── picker ───────────────────────────────────────────────────────────────────
 function Picker({ label, items, value, onChange, accent }) {
   return (
     <div>
@@ -361,7 +342,7 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures })
     const taps = tapRef.current;
     taps.push(now); if (taps.length > 6) taps.shift();
     if (taps.length >= 2) {
-      const ints = []; for (let i = 1; i < taps.length; i++) ints.push(taps[i] - taps[i - 1]);
+      const ints = []; for (let i = 1; i < taps.length; i++) ints.push(taps[i] - taps[i-1]);
       const avg = ints.reduce((a, b) => a + b, 0) / ints.length;
       const v = Math.round(60000 / avg);
       if (v >= 30 && v <= 300) onChange({ bpm: v });
@@ -396,14 +377,14 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures })
 
       <div>
         <input type="range" min={30} max={300} value={Math.round(bpm)}
-          onChange={(e) => onChange({ bpm:parseInt(e.target.value) })}
+          onChange={(e) => onChange({ bpm: parseInt(e.target.value) })}
           style={{ width:"100%", accentColor:accent, cursor:"pointer" }} />
         <div style={{ display:"flex", justifyContent:"space-between", color:"#444", fontSize:9, fontFamily:"monospace" }}><span>30</span><span>300</span></div>
       </div>
 
       <div style={{ display:"flex", gap:5, justifyContent:"center" }}>
         {[-10,-1,+1,+10].map((d) => (
-          <button key={d} onClick={() => onChange({ bpm:Math.min(300,Math.max(30,Math.round(bpm)+d)) })} style={{ background:"#252830", border:`1px solid ${accent}33`, borderRadius:5, color:accent, fontFamily:"monospace", fontSize:12, padding:"5px 10px", cursor:"pointer" }}>{d > 0 ? `+${d}` : d}</button>
+          <button key={d} onClick={() => onChange({ bpm: Math.min(300, Math.max(30, Math.round(bpm)+d)) })} style={{ background:"#252830", border:`1px solid ${accent}33`, borderRadius:5, color:accent, fontFamily:"monospace", fontSize:12, padding:"5px 10px", cursor:"pointer" }}>{d > 0 ? `+${d}` : d}</button>
         ))}
       </div>
 
@@ -413,7 +394,7 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures })
         <div style={{ color:"#444", fontSize:9, fontFamily:"monospace", marginBottom:6, letterSpacing:1 }}>COMPÁS</div>
         <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
           {TIME_SIGNATURES.map((sig) => (
-            <button key={sig} onClick={() => onChange({ timeSig:sig })} style={{ background: timeSig===sig ? accent : "#252830", border:`1px solid ${timeSig===sig ? accent : "#3a3d47"}`, borderRadius:5, color: timeSig===sig ? "#15171c" : "#777", fontFamily:"monospace", fontSize:11, padding:"3px 8px", cursor:"pointer", fontWeight: timeSig===sig ? 700 : 400 }}>{sig}</button>
+            <button key={sig} onClick={() => onChange({ timeSig: sig })} style={{ background: timeSig===sig ? accent : "#252830", border:`1px solid ${timeSig===sig ? accent : "#3a3d47"}`, borderRadius:5, color: timeSig===sig ? "#15171c" : "#777", fontFamily:"monospace", fontSize:11, padding:"3px 8px", cursor:"pointer", fontWeight: timeSig===sig ? 700 : 400 }}>{sig}</button>
           ))}
         </div>
       </div>
@@ -432,7 +413,7 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures })
 
       <div style={{ display:"flex", alignItems:"center", gap:8 }}>
         <button onClick={() => onChange({ muted:!muted })} style={{ background:"none", border:"none", cursor:"pointer", color: muted ? "#333" : accent, padding:2 }}>{muted ? <VolumeX size={15} /> : <Volume2 size={15} />}</button>
-        <input type="range" min={0} max={1} step={0.01} value={volume} onChange={(e) => onChange({ volume:parseFloat(e.target.value) })} style={{ flex:1, accentColor:accent }} disabled={muted} />
+        <input type="range" min={0} max={1} step={0.01} value={volume} onChange={(e) => onChange({ volume: parseFloat(e.target.value) })} style={{ flex:1, accentColor:accent }} disabled={muted} />
         <span style={{ color:"#444", fontSize:9, fontFamily:"monospace", width:26, textAlign:"right" }}>{Math.round(volume*100)}</span>
       </div>
     </div>
@@ -457,9 +438,9 @@ function DualSwitch({ on, onToggle }) {
 
 // ─── progressive practice ─────────────────────────────────────────────────────
 function ProgressivePractice({ onBpmChange, onActivate, running }) {
-  const [on, setOn]   = useState(false);
-  const [cfg, setCfg] = useState({ bpmStart:60, bpmMax:140, increment:5, intervalSec:120, onMax:"stop" });
-  const [curBpm, setCurBpm]   = useState(60);
+  const [on, setOn]     = useState(false);
+  const [cfg, setCfg]   = useState({ bpmStart:60, bpmMax:140, increment:5, intervalSec:120, onMax:"stop" });
+  const [curBpm, setCurBpm]     = useState(60);
   const [timeLeft, setTimeLeft] = useState(120);
   const curBpmRef = useRef(60);
   const cfgRef    = useRef(cfg);
@@ -469,7 +450,7 @@ function ProgressivePractice({ onBpmChange, onActivate, running }) {
   useEffect(() => { onBpmRef.current = onBpmChange; }, [onBpmChange]);
 
   const fmt = (s) => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
-  const set = (k,v) => setCfg((c) => ({ ...c, [k]:v }));
+  const set  = (k, v) => setCfg((c) => ({ ...c, [k]:v }));
 
   const start = () => {
     curBpmRef.current = cfg.bpmStart;
@@ -504,7 +485,6 @@ function ProgressivePractice({ onBpmChange, onActivate, running }) {
           {on ? <Square size={11} /> : <Play size={11} />}{on ? "DETENER" : "INICIAR"}
         </button>
       </div>
-
       <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom: on ? 14 : 0 }}>
         {[["BPM INICIO","bpmStart",30,280],["BPM MÁX","bpmMax",40,300],["+ BPM","increment",1,20],["SEG / PASO","intervalSec",10,600]].map(([lbl,k,mn,mx]) => (
           <div key={k} style={{ display:"flex", flexDirection:"column", gap:3, minWidth:80 }}>
@@ -523,7 +503,6 @@ function ProgressivePractice({ onBpmChange, onActivate, running }) {
           </select>
         </div>
       </div>
-
       {on && (
         <div style={{ display:"flex", gap:16, alignItems:"center", background:"#15171c", borderRadius:8, padding:"12px 16px", border:"1px solid #ffd04a22" }}>
           <div style={{ textAlign:"center" }}>
@@ -555,17 +534,18 @@ const DEFAULT_B = { bpm:90,  timeSig:"3/4", volume:0.7, muted:false, beat:-1, st
 
 // ─── main ─────────────────────────────────────────────────────────────────────
 export default function DualMetronome() {
-  // mode
-  const [mode, setMode] = useState("libre");
-  const modeRef = useRef("libre");
-  useEffect(() => { modeRef.current = mode; }, [mode]);
+  // mode — polimetría is the primary / default mode
+  const [mode, setMode] = useState("metrica");
+  const modeRef = useRef("metrica");
 
-  // relación métrica state
+  // polimetría params + refs (refs updated synchronously so restartNow can read them)
   const [relBase,    setRelBase]    = useState(4);
   const [relDeriv,   setRelDeriv]   = useState(5);
   const [relBpmBase, setRelBpmBase] = useState(90);
+  const relBaseRef  = useRef(4);
+  const relDerivRef = useRef(5);
 
-  // shared metronome state
+  // shared audio state
   const [runningA, setRunningA] = useState(false);
   const [runningB, setRunningB] = useState(false);
   const [dualOn,   setDualOn]   = useState(false);
@@ -573,34 +553,27 @@ export default function DualMetronome() {
   const [metB, setMetB] = useState(DEFAULT_B);
   const [measuresA, setMeasuresA] = useState(0);
   const [measuresB, setMeasuresB] = useState(0);
-  const [presets,   setPresets]   = useState(loadPresets);
+  const [presets,    setPresets]   = useState(loadPresets);
   const [presetName, setPresetName] = useState("");
   const [activePolyPreset, setActivePolyPreset] = useState(null);
 
-  // audio refs
-  const ctxRef      = useRef(null);
-  const schedRef    = useRef(null);
-  const runARef     = useRef(false);
-  const runBRef     = useRef(false);
-  const nextARef    = useRef(0);
-  const nextBRef    = useRef(0);
-  const tickARef    = useRef(0);
-  const tickBRef    = useRef(0);
-  const metARef     = useRef(metA);
-  const metBRef     = useRef(metB);
+  // audio refs — the scheduler reads exclusively from these, never from state
+  const ctxRef   = useRef(null);
+  const schedRef = useRef(null);
+  const runARef  = useRef(false);
+  const runBRef  = useRef(false);
+  const nextARef = useRef(0);
+  const nextBRef = useRef(0);
+  const tickARef = useRef(0);
+  const tickBRef = useRef(0);
+  const metARef  = useRef(metA);
+  const metBRef  = useRef(metB);
+  // keep metRefs in sync with state (for non-restart param changes like volume/mute)
   useEffect(() => { metARef.current = metA; }, [metA]);
   useEffect(() => { metBRef.current = metB; }, [metB]);
   useEffect(() => () => { clearInterval(schedRef.current); ctxRef.current?.close(); }, []);
 
-  // ── auto-calculate in relación métrica mode ──────────────────────────────────
-  useEffect(() => {
-    if (mode !== "metrica") return;
-    const bpmB = relBpmBase * relDeriv / relBase;
-    setMetA((p) => ({ ...p, bpm: relBpmBase, timeSig: `${relBase}/4` }));
-    setMetB((p) => ({ ...p, bpm: bpmB,       timeSig: `${relDeriv}/4` }));
-  }, [mode, relBpmBase, relBase, relDeriv]);
-
-  // ── scheduler ────────────────────────────────────────────────────────────────
+  // ── scheduler ──────────────────────────────────────────────────────────────
   const scheduleBeats = useCallback(() => {
     const ctx = ctxRef.current;
     if (!ctx || ctx.state === "closed") return;
@@ -609,9 +582,8 @@ export default function DualMetronome() {
     const sched = (runRef, metRef, nextRef, tickRef, setMeasures, setMet) => {
       if (!runRef.current) return;
       const { bpm, timeSig, volume, muted, strongSound, weakSound, subdivision } = metRef.current;
-      const total   = beatsPerMeasure(timeSig);
-      const beatInt = 60 / bpm;
-      const subInt  = beatInt / subdivision;
+      const total  = beatsPerMeasure(timeSig);
+      const subInt = (60 / bpm) / subdivision;
       while (nextRef.current < ahead) {
         const tick    = tickRef.current;
         const subIdx  = tick % subdivision;
@@ -620,7 +592,7 @@ export default function DualMetronome() {
         const isAcc   = isMain && beatIdx === 0;
         const t       = nextRef.current;
         if (!muted) {
-          if (isAcc)      synthClick(ctx, t, strongSound, volume);
+          if (isAcc)       synthClick(ctx, t, strongSound, volume);
           else if (isMain) synthClick(ctx, t, weakSound,   volume * 0.55);
           else             synthClick(ctx, t, weakSound,   volume * 0.15);
         }
@@ -637,7 +609,7 @@ export default function DualMetronome() {
             setTimeout(() => setMet((p) => ({ ...p, beat: -1 })), 75);
           }, delay);
         }
-        nextRef.current  += subInt;
+        nextRef.current += subInt;
         tickRef.current++;
       }
     };
@@ -645,59 +617,156 @@ export default function DualMetronome() {
     sched(runBRef, metBRef, nextBRef, tickBRef, setMeasuresB, setMetB);
   }, []);
 
-  // ── engine helpers ───────────────────────────────────────────────────────────
-  const ensureCtx = () => { if (!ctxRef.current || ctxRef.current.state === "closed") ctxRef.current = new AudioContext(); return ctxRef.current; };
-  const ensureSched = () => { if (!schedRef.current) { scheduleBeats(); schedRef.current = setInterval(scheduleBeats, 25); } };
-  const teardownIfIdle = () => {
-    if (!runARef.current && !runBRef.current) {
-      clearInterval(schedRef.current); schedRef.current = null;
-      ctxRef.current?.close(); ctxRef.current = null;
-    }
+  // ── restartNow ─────────────────────────────────────────────────────────────
+  // Call AFTER writing new values into metARef / metBRef.
+  // Immediately stops the current scheduler and restarts it from beat 0,
+  // guaranteeing that both metronomes are in sync with no phase drift.
+  const restartNow = useCallback(() => {
+    const wasA = runARef.current, wasB = runBRef.current;
+    clearInterval(schedRef.current); schedRef.current = null;
+    ctxRef.current?.close(); ctxRef.current = null;
+    runARef.current = false; runBRef.current = false;
+    if (!wasA && !wasB) return; // nothing was playing, nothing to restart
+    const ctx = new AudioContext(); ctxRef.current = ctx;
+    const t0  = ctx.currentTime + 0.05;
+    if (wasA) { nextARef.current = t0; tickARef.current = 0; runARef.current = true; }
+    if (wasB) { nextBRef.current = t0; tickBRef.current = 0; runBRef.current = true; }
+    setRunningA(wasA); setRunningB(wasB); setDualOn(wasA && wasB);
+    setMeasuresA(0); setMeasuresB(0);
+    scheduleBeats(); schedRef.current = setInterval(scheduleBeats, 25);
+  }, [scheduleBeats]);
+
+  // ── engine ─────────────────────────────────────────────────────────────────
+  const ensureCtx = () => {
+    if (!ctxRef.current || ctxRef.current.state === "closed") ctxRef.current = new AudioContext();
+    return ctxRef.current;
   };
-  const hardStop = () => {
+  const hardStop = useCallback(() => {
     runARef.current = false; runBRef.current = false;
     clearInterval(schedRef.current); schedRef.current = null;
     ctxRef.current?.close(); ctxRef.current = null;
-    setRunningA(false); setRunningB(false);
+    setRunningA(false); setRunningB(false); setDualOn(false);
     setMetA((p) => ({ ...p, beat:-1 })); setMetB((p) => ({ ...p, beat:-1 }));
-  };
-  const startDual = () => {
+    setMeasuresA(0); setMeasuresB(0);
+  }, []);
+  const startDual = useCallback(() => {
     const ctx = new AudioContext(); ctxRef.current = ctx;
-    const t0 = ctx.currentTime + 0.1;
+    const t0  = ctx.currentTime + 0.1;
     nextARef.current = t0; nextBRef.current = t0;
     tickARef.current = 0;  tickBRef.current = 0;
     setMeasuresA(0); setMeasuresB(0);
     runARef.current = true; runBRef.current = true;
     setRunningA(true); setRunningB(true); setDualOn(true);
     scheduleBeats(); schedRef.current = setInterval(scheduleBeats, 25);
-  };
+  }, [scheduleBeats]);
 
-  // ── toggles ──────────────────────────────────────────────────────────────────
+  // ── individual toggles ─────────────────────────────────────────────────────
   const toggleA = () => {
-    if (runARef.current) { runARef.current = false; setRunningA(false); setDualOn(false); setMetA((p) => ({ ...p, beat:-1 })); teardownIfIdle(); }
-    else { const ctx = ensureCtx(); nextARef.current = ctx.currentTime + 0.1; tickARef.current = 0; setMeasuresA(0); runARef.current = true; setRunningA(true); setDualOn(false); ensureSched(); }
+    if (runARef.current) {
+      runARef.current = false; setRunningA(false); setDualOn(false); setMetA((p) => ({ ...p, beat:-1 }));
+      if (!runBRef.current) { clearInterval(schedRef.current); schedRef.current = null; ctxRef.current?.close(); ctxRef.current = null; }
+    } else {
+      const ctx = ensureCtx();
+      nextARef.current = ctx.currentTime + 0.1; tickARef.current = 0; setMeasuresA(0);
+      runARef.current = true; setRunningA(true); setDualOn(false);
+      if (!schedRef.current) { scheduleBeats(); schedRef.current = setInterval(scheduleBeats, 25); }
+    }
   };
   const toggleB = () => {
-    if (runBRef.current) { runBRef.current = false; setRunningB(false); setDualOn(false); setMetB((p) => ({ ...p, beat:-1 })); teardownIfIdle(); }
-    else { const ctx = ensureCtx(); nextBRef.current = ctx.currentTime + 0.1; tickBRef.current = 0; setMeasuresB(0); runBRef.current = true; setRunningB(true); setDualOn(false); ensureSched(); }
+    if (runBRef.current) {
+      runBRef.current = false; setRunningB(false); setDualOn(false); setMetB((p) => ({ ...p, beat:-1 }));
+      if (!runARef.current) { clearInterval(schedRef.current); schedRef.current = null; ctxRef.current?.close(); ctxRef.current = null; }
+    } else {
+      const ctx = ensureCtx();
+      nextBRef.current = ctx.currentTime + 0.1; tickBRef.current = 0; setMeasuresB(0);
+      runBRef.current = true; setRunningB(true); setDualOn(false);
+      if (!schedRef.current) { scheduleBeats(); schedRef.current = setInterval(scheduleBeats, 25); }
+    }
   };
-  const toggleDual = () => { if (dualOn) { hardStop(); setDualOn(false); } else { hardStop(); startDual(); } };
+  const toggleDual = () => { if (dualOn) { hardStop(); } else { hardStop(); startDual(); } };
 
-  // ── handlers ─────────────────────────────────────────────────────────────────
-  const applyPolyPreset = (p) => { setMetA((s) => ({ ...s, timeSig:p.a })); setMetB((s) => ({ ...s, timeSig:p.b })); setActivePolyPreset(p.label); };
+  // ── polimetría param handlers ──────────────────────────────────────────────
+  // Update both refs and state, then restart so there is zero phase drift.
+  const applyPoliParams = useCallback((bpmBase, base, deriv) => {
+    const bpmB = bpmBase * deriv / base;
+    metARef.current = { ...metARef.current, bpm: bpmBase, timeSig: `${base}/4` };
+    metBRef.current = { ...metBRef.current, bpm: bpmB,    timeSig: `${deriv}/4` };
+    setMetA((p) => ({ ...p, bpm: bpmBase, timeSig: `${base}/4` }));
+    setMetB((p) => ({ ...p, bpm: bpmB,    timeSig: `${deriv}/4` }));
+    restartNow();
+  }, [restartNow]);
 
+  const handleRelBpmBase = useCallback((v) => {
+    setRelBpmBase(v);
+    applyPoliParams(v, relBaseRef.current, relDerivRef.current);
+  }, [applyPoliParams]);
+
+  const handleRelBase = useCallback((v) => {
+    setRelBase(v); relBaseRef.current = v;
+    applyPoliParams(relBpmBase, v, relDerivRef.current);
+  // relBpmBase captured at call time; applyPoliParams is stable
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyPoliParams, relBpmBase]);
+
+  const handleRelDeriv = useCallback((v) => {
+    setRelDeriv(v); relDerivRef.current = v;
+    applyPoliParams(relBpmBase, relBaseRef.current, v);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyPoliParams, relBpmBase]);
+
+  // ── dual libre param handlers ──────────────────────────────────────────────
+  // Restart only for params that affect timing (bpm, timeSig, subdivision).
+  // Sound/volume/mute changes are picked up by the scheduler on the next tick.
+  const changeMetA = useCallback((patch) => {
+    metARef.current = { ...metARef.current, ...patch };
+    setMetA((p) => ({ ...p, ...patch }));
+    setActivePolyPreset(null);
+    if (runARef.current && Object.keys(patch).some((k) => NEEDS_RESTART.has(k))) restartNow();
+  }, [restartNow]);
+
+  const changeMetB = useCallback((patch) => {
+    metBRef.current = { ...metBRef.current, ...patch };
+    setMetB((p) => ({ ...p, ...patch }));
+    setActivePolyPreset(null);
+    if (runBRef.current && Object.keys(patch).some((k) => NEEDS_RESTART.has(k))) restartNow();
+  }, [restartNow]);
+
+  // ── mode switch ────────────────────────────────────────────────────────────
+  const handleModeChange = useCallback((newMode) => {
+    hardStop();
+    setMode(newMode); modeRef.current = newMode;
+    if (newMode === "metrica") {
+      const bpmB = relBpmBase * relDerivRef.current / relBaseRef.current;
+      metARef.current = { ...metARef.current, bpm: relBpmBase, timeSig: `${relBaseRef.current}/4` };
+      metBRef.current = { ...metBRef.current, bpm: bpmB,       timeSig: `${relDerivRef.current}/4` };
+      setMetA((p) => ({ ...p, bpm: relBpmBase, timeSig: `${relBaseRef.current}/4` }));
+      setMetB((p) => ({ ...p, bpm: bpmB,       timeSig: `${relDerivRef.current}/4` }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hardStop, relBpmBase]);
+
+  // ── progressive practice bpm handler ──────────────────────────────────────
   const handlePracticeBpm = useCallback((bpm) => {
-    if (modeRef.current === "metrica") setRelBpmBase(bpm);
-    else { setMetA((p) => ({ ...p, bpm })); setMetB((p) => ({ ...p, bpm })); }
-  }, []);
+    if (modeRef.current === "metrica") {
+      setRelBpmBase(bpm);
+      applyPoliParams(bpm, relBaseRef.current, relDerivRef.current);
+    } else {
+      metARef.current = { ...metARef.current, bpm };
+      metBRef.current = { ...metBRef.current, bpm };
+      setMetA((p) => ({ ...p, bpm }));
+      setMetB((p) => ({ ...p, bpm }));
+      restartNow();
+    }
+  }, [applyPoliParams, restartNow]);
 
   const handlePracticeActivate = useCallback(() => {
-    if (!runARef.current || !runBRef.current) { hardStop(); startDual(); }
-  }, []);
+    if (!runARef.current || !runBRef.current) startDual();
+  }, [startDual]);
 
-  // ── presets ──────────────────────────────────────────────────────────────────
+  // ── presets ────────────────────────────────────────────────────────────────
+  const applyPolyPreset = (p) => { changeMetA({ timeSig:p.a }); changeMetB({ timeSig:p.b }); setActivePolyPreset(p.label); };
   const savePreset = () => {
-    const name = presetName.trim() || `Preset ${presets.length + 1}`;
+    const name  = presetName.trim() || `Preset ${presets.length + 1}`;
     const entry = { id:Date.now(), name,
       a:{ bpm:metA.bpm, timeSig:metA.timeSig, strongSound:metA.strongSound, weakSound:metA.weakSound, subdivision:metA.subdivision },
       b:{ bpm:metB.bpm, timeSig:metB.timeSig, strongSound:metB.strongSound, weakSound:metB.weakSound, subdivision:metB.subdivision },
@@ -705,18 +774,17 @@ export default function DualMetronome() {
     const u = [...presets, entry]; setPresets(u); savePresets(u); setPresetName("");
   };
   const loadPreset = (p) => {
-    setMetA((s) => ({ ...s, ...p.a, strongSound:p.a.strongSound??"click", weakSound:p.a.weakSound??"beep", subdivision:p.a.subdivision??1 }));
-    setMetB((s) => ({ ...s, ...p.b, strongSound:p.b.strongSound??"click", weakSound:p.b.weakSound??"wood", subdivision:p.b.subdivision??1 }));
+    changeMetA({ ...p.a, strongSound:p.a.strongSound??"click", weakSound:p.a.weakSound??"beep", subdivision:p.a.subdivision??1 });
+    changeMetB({ ...p.b, strongSound:p.b.strongSound??"click", weakSound:p.b.weakSound??"wood", subdivision:p.b.subdivision??1 });
   };
   const deletePreset = (id) => { const u = presets.filter((p) => p.id !== id); setPresets(u); savePresets(u); };
 
-  // ── render ───────────────────────────────────────────────────────────────────
+  // ── render ─────────────────────────────────────────────────────────────────
   const isMetrica = mode === "metrica";
   const centerLabel = isMetrica ? `${relDeriv}:${relBase}` : undefined;
 
   return (
     <div style={{ minHeight:"100vh", background:"#15171c", color:"#ddd", fontFamily:"system-ui,sans-serif", padding:"24px 16px", boxSizing:"border-box" }}>
-
       {/* header */}
       <div style={{ textAlign:"center", marginBottom:18 }}>
         <h1 style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, color:"#eee", margin:0, letterSpacing:4 }}>
@@ -726,20 +794,19 @@ export default function DualMetronome() {
 
       {/* mode selector */}
       <div style={{ marginBottom:20 }}>
-        <ModeSelector mode={mode} setMode={setMode} />
+        <ModeSelector mode={mode} setMode={handleModeChange} />
       </div>
 
-      {/* ── MODO RELACIÓN MÉTRICA ── */}
+      {/* ── POLIMETRÍA (default/primary) ── */}
       {isMetrica && (
         <>
           <div style={{ display:"flex", justifyContent:"center", marginBottom:20 }}>
             <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} />
           </div>
           <div style={{ marginBottom:20 }}>
-            <MetricRelationPanel
-              bpmBase={relBpmBase} setBpmBase={setRelBpmBase}
-              base={relBase}       setBase={setRelBase}
-              derivado={relDeriv}  setDerivado={setRelDeriv}
+            <PoliPanel
+              bpmBase={relBpmBase} base={relBase} derivado={relDeriv}
+              onBpmBase={handleRelBpmBase} onBase={handleRelBase} onDeriv={handleRelDeriv}
             />
           </div>
           <div style={{ textAlign:"center", marginBottom:20 }}>
@@ -751,7 +818,7 @@ export default function DualMetronome() {
         </>
       )}
 
-      {/* ── MODO DUAL LIBRE ── */}
+      {/* ── DUAL LIBRE (secondary) ── */}
       {!isMetrica && (
         <>
           <div style={{ maxWidth:880, margin:"0 auto 18px" }}>
@@ -761,12 +828,8 @@ export default function DualMetronome() {
             <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} />
           </div>
           <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", maxWidth:880, margin:"0 auto" }}>
-            <MetronomePanel color="A" state={metA}
-              onChange={(patch) => { setMetA((p) => ({ ...p, ...patch })); setActivePolyPreset(null); }}
-              running={runningA} onToggle={toggleA} measures={measuresA} />
-            <MetronomePanel color="B" state={metB}
-              onChange={(patch) => { setMetB((p) => ({ ...p, ...patch })); setActivePolyPreset(null); }}
-              running={runningB} onToggle={toggleB} measures={measuresB} />
+            <MetronomePanel color="A" state={metA} onChange={changeMetA} running={runningA} onToggle={toggleA} measures={measuresA} />
+            <MetronomePanel color="B" state={metB} onChange={changeMetB} running={runningB} onToggle={toggleB} measures={measuresB} />
           </div>
           <div style={{ textAlign:"center", margin:"22px 0" }}>
             <DualSwitch on={dualOn} onToggle={toggleDual} />
@@ -774,7 +837,6 @@ export default function DualMetronome() {
           <div style={{ maxWidth:880, margin:"0 auto 18px" }}>
             <ProgressivePractice onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} />
           </div>
-
           {/* presets */}
           <div style={{ maxWidth:880, margin:"0 auto", background:"#1e2028", borderRadius:12, padding:20 }}>
             <div style={{ color:"#444", fontSize:9, fontFamily:"monospace", marginBottom:14, letterSpacing:2 }}>PRESETS</div>
