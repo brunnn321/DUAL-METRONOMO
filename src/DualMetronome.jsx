@@ -359,7 +359,16 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures })
     }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
         <span style={{ background:accent, color:"#15171c", fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:12, padding:"2px 10px", borderRadius:4, letterSpacing:2 }}>MET {color}</span>
-        <button onClick={onToggle} style={{ background: running ? `${accent}1a` : "#252830", border:`1px solid ${running ? accent : "#3a3d47"}`, borderRadius:6, color: running ? accent : "#555", padding:"5px 13px", cursor:"pointer", display:"flex", alignItems:"center", gap:5, fontFamily:"monospace", fontSize:11, fontWeight:600, transition:"all 0.15s" }}>
+        <button onClick={onToggle} style={{
+          background: running ? "#2a1010" : "#0d2616",
+          border:`1px solid ${running ? "#ff4a4a" : "#4aff7a"}`,
+          borderRadius:6, padding:"5px 14px", cursor:"pointer",
+          display:"flex", alignItems:"center", gap:6,
+          fontFamily:"monospace", fontSize:11, fontWeight:700,
+          color: running ? "#ff4a4a" : "#4aff7a",
+          boxShadow: running ? "none" : "0 0 10px #4aff7a33",
+          transition:"all 0.15s",
+        }}>
           {running ? <Square size={11} /> : <Play size={11} />}{running ? "STOP" : "PLAY"}
         </button>
       </div>
@@ -423,15 +432,27 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures })
 // ─── dual switch ──────────────────────────────────────────────────────────────
 function DualSwitch({ on, onToggle }) {
   return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
       <div style={{ color:"#444", fontSize:9, fontFamily:"monospace", letterSpacing:3 }}>DUAL SYNC</div>
-      <div onClick={onToggle} style={{ display:"flex", alignItems:"center", gap:14, cursor:"pointer", userSelect:"none" }}>
-        <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color: on ? "#333" : "#666", transition:"color 0.2s" }}>OFF</span>
-        <div style={{ width:76, height:38, borderRadius:19, background: on ? "#0d2616" : "#1a1c22", border:`2px solid ${on ? "#4aff7a" : "#3a3d47"}`, position:"relative", transition:"all 0.25s", boxShadow: on ? "0 0 18px #4aff7a33" : "none" }}>
-          <div style={{ width:28, height:28, borderRadius:14, background: on ? "#4aff7a" : "#3a3d47", position:"absolute", top:3, left: on ? 41 : 3, transition:"left 0.25s, background 0.25s", boxShadow: on ? "0 0 10px #4aff7a88" : "none" }} />
-        </div>
-        <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color: on ? "#4aff7a" : "#444", transition:"color 0.2s", letterSpacing:1 }}>ON</span>
-      </div>
+      <button onClick={onToggle} style={{
+        display:"flex", alignItems:"center", gap:12,
+        background: on ? "#2a1010" : "#0d2616",
+        border:`2px solid ${on ? "#ff4a4a" : "#4aff7a"}`,
+        borderRadius:12, padding:"14px 36px",
+        cursor:"pointer", userSelect:"none",
+        boxShadow: on ? "0 0 20px #ff4a4a22" : "0 0 24px #4aff7a44",
+        transition:"all 0.2s",
+      }}>
+        {on
+          ? <Square size={22} color="#ff4a4a" />
+          : <Play  size={22} color="#4aff7a" />
+        }
+        <span style={{
+          fontFamily:"'JetBrains Mono',monospace", fontSize:16, fontWeight:700, letterSpacing:2,
+          color: on ? "#ff4a4a" : "#4aff7a",
+          transition:"color 0.2s",
+        }}>{on ? "DETENER" : "INICIAR"}</span>
+      </button>
     </div>
   );
 }
