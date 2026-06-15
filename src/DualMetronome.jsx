@@ -546,6 +546,26 @@ function ProgressivePractice({ onBpmChange, onActivate, running }) {
   );
 }
 
+// ─── screen flash ─────────────────────────────────────────────────────────────
+function ScreenFlash({ metA, metB, runningA, runningB }) {
+  const onA = runningA && metA.beat >= 0;
+  const onB = runningB && metB.beat >= 0;
+  const accentA = metA.beat === 0;
+  const accentB = metB.beat === 0;
+  const overlay = (on, accent, color) => ({
+    position:"fixed", inset:0, pointerEvents:"none", zIndex:999,
+    background: color,
+    opacity: on ? (accent ? 0.18 : 0.10) : 0,
+    transition: on ? "opacity 0.01s" : "opacity 0.18s ease-out",
+  });
+  return (
+    <>
+      <div style={overlay(onA, accentA, "#ff6b4a")} />
+      <div style={overlay(onB, accentB, "#4ad9ff")} />
+    </>
+  );
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function loadPresets() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]"); } catch { return []; } }
 function savePresets(p) { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); }
@@ -806,6 +826,7 @@ export default function DualMetronome() {
 
   return (
     <div style={{ minHeight:"100vh", background:"#15171c", color:"#ddd", fontFamily:"system-ui,sans-serif", padding:"24px 16px", boxSizing:"border-box" }}>
+      <ScreenFlash metA={metA} metB={metB} runningA={runningA} runningB={runningB} />
       {/* header */}
       <div style={{ textAlign:"center", marginBottom:18 }}>
         <h1 style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, color:"#eee", margin:0, letterSpacing:4 }}>
