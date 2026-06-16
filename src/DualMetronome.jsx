@@ -6,13 +6,26 @@ const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
 const lcm = (a, b) => (a * b) / gcd(a, b);
 
 // ─── constants ────────────────────────────────────────────────────────────────
-const TIME_SIGNATURES = ["2/4","3/4","4/4","5/4","6/8","7/8","8/8","9/8","11/8","12/8","13/8"];
 const beatsPerMeasure = (sig) => parseInt(sig.split("/")[0]);
 
 const SOUNDS = [
   { key:"click", label:"CLICK" }, { key:"beep",  label:"BEEP"  },
   { key:"wood",  label:"WOOD"  }, { key:"clave", label:"CLAVE" },
   { key:"rim",   label:"RIM"   }, { key:"hat",   label:"HAT"   },
+];
+
+// figures: how each beat (pulso) gets subdivided — Dual Libre only
+const FIGURES = [
+  { value:1,  label:"PULSO" },
+  { value:2,  label:"CORCHEAS" },
+  { value:3,  label:"TRESILLO" },
+  { value:4,  label:"SEMICORCHEA" },
+  { value:5,  label:"QUINTILLO" },
+  { value:6,  label:"SEISILLO" },
+  { value:7,  label:"SIETESILLO" },
+  { value:9,  label:"NUEVESILLO" },
+  { value:11, label:"ONCESILLO" },
+  { value:13, label:"TRECESILLO" },
 ];
 
 const BASE_VALUES     = [2, 3, 4, 5, 6, 7, 8];
@@ -294,12 +307,11 @@ function Picker({ label, items, value, onChange, accent }) {
 
 // ─── metronome panel ──────────────────────────────────────────────────────────
 function MetronomePanel({ color, state, onChange, running, onToggle, measures }) {
-  const { bpm, timeSig, volume, muted, beat, strongSound, weakSound } = state;
+  const { bpm, volume, muted, subTick, strongSound, weakSound, subdivision } = state;
   const baseBpm = state.baseBpm ?? bpm;
   const tapRef = useRef([]);
   const accent    = color === "A" ? "#ff6b4a" : "#4ad9ff";
   const dimAccent = color === "A" ? "#6a2a18" : "#174d5e";
-  const total     = beatsPerMeasure(timeSig);
 
   const handleTap = () => {
     const now = performance.now();
@@ -363,17 +375,17 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures })
       <button onClick={handleTap} style={{ background:`${accent}14`, border:`1px solid ${accent}44`, borderRadius:7, color:accent, fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1 }}>TAP TEMPO</button>
 
       <div>
-        <div style={{ color:"#444", fontSize:9, fontFamily:"monospace", marginBottom:6, letterSpacing:1 }}>COMPÁS</div>
+        <div style={{ color:"#444", fontSize:9, fontFamily:"monospace", marginBottom:6, letterSpacing:1 }}>FIGURAS</div>
         <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-          {TIME_SIGNATURES.map((sig) => (
-            <button key={sig} onClick={() => onChange({ timeSig: sig })} style={{ background: timeSig===sig ? accent : "#252830", border:`1px solid ${timeSig===sig ? accent : "#3a3d47"}`, borderRadius:5, color: timeSig===sig ? "#15171c" : "#777", fontFamily:"monospace", fontSize:11, padding:"3px 8px", cursor:"pointer", fontWeight: timeSig===sig ? 700 : 400 }}>{sig}</button>
+          {FIGURES.map(({ value, label }) => (
+            <button key={value} onClick={() => onChange({ subdivision: value })} style={{ background: subdivision===value ? accent : "#252830", border:`1px solid ${subdivision===value ? accent : "#3a3d47"}`, borderRadius:5, color: subdivision===value ? "#15171c" : "#777", fontFamily:"monospace", fontSize:11, padding:"3px 8px", cursor:"pointer", fontWeight: subdivision===value ? 700 : 400 }}>{label}</button>
           ))}
         </div>
       </div>
 
       <div style={{ display:"flex", gap:6, justifyContent:"center", flexWrap:"wrap" }}>
-        {Array.from({ length:total }, (_,i) => (
-          <div key={i} style={{ width:15, height:15, borderRadius:"50%", background: beat===i ? (i===0 ? accent : `${accent}77`) : (i===0 ? dimAccent : "#222530"), boxShadow: beat===i ? `0 0 8px ${accent}` : "none", border:`1px solid ${accent}1a`, transition:"background 0.04s, box-shadow 0.04s" }} />
+        {Array.from({ length:subdivision }, (_,i) => (
+          <div key={i} style={{ width:15, height:15, borderRadius:"50%", background: subTick===i ? (i===0 ? accent : `${accent}77`) : (i===0 ? dimAccent : "#222530"), boxShadow: subTick===i ? `0 0 8px ${accent}` : "none", border:`1px solid ${accent}1a`, transition:"background 0.04s, box-shadow 0.04s" }} />
         ))}
       </div>
 
@@ -605,8 +617,8 @@ function TapTempoButton({ onTap }) {
 function loadPresets() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]"); } catch { return []; } }
 function savePresets(p) { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); }
 
-const DEFAULT_A = { bpm:120, baseBpm:120, timeSig:"4/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, strongSound:"click", weakSound:"beep",  subdivision:1 };
-const DEFAULT_B = { bpm:90,  baseBpm:90,  timeSig:"3/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, strongSound:"click", weakSound:"wood",  subdivision:1 };
+const DEFAULT_A = { bpm:120, baseBpm:120, timeSig:"4/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, subTick:-1, strongSound:"click", weakSound:"beep",  subdivision:1 };
+const DEFAULT_B = { bpm:90,  baseBpm:90,  timeSig:"3/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, subTick:-1, strongSound:"click", weakSound:"wood",  subdivision:1 };
 
 // ─── main ─────────────────────────────────────────────────────────────────────
 export default function DualMetronome() {
@@ -686,6 +698,16 @@ export default function DualMetronome() {
           setTimeout(() => {
             setMet((p) => ({ ...p, beat: cb, lastBeat: cb }));
             setTimeout(() => setMet((p) => ({ ...p, beat: -1 })), 75);
+          }, delay);
+        }
+        // subTick fires on every subdivision tick (used by the FIGURAS dot
+        // ring in Dual Libre to visualize corchea/tresillo/etc. patterns)
+        {
+          const sb    = subIdx;
+          const delay = Math.max(0, (t - ctx.currentTime) * 1000);
+          setTimeout(() => {
+            setMet((p) => ({ ...p, subTick: sb }));
+            setTimeout(() => setMet((p) => ({ ...p, subTick: -1 })), 60);
           }, delay);
         }
         nextRef.current += subInt;
@@ -832,6 +854,13 @@ export default function DualMetronome() {
       metBRef.current = { ...metBRef.current, bpm: bpmB,       timeSig: `${relDerivRef.current}/4` };
       setMetA((p) => ({ ...p, bpm: relBpmBase, timeSig: `${relBaseRef.current}/4` }));
       setMetB((p) => ({ ...p, bpm: bpmB,       timeSig: `${relDerivRef.current}/4` }));
+    } else {
+      // Dual Libre has no "compás" concept anymore — fix timeSig to a single
+      // beat per measure so the shared circular visualizer stays consistent.
+      metARef.current = { ...metARef.current, timeSig: "1/4" };
+      metBRef.current = { ...metBRef.current, timeSig: "1/4" };
+      setMetA((p) => ({ ...p, timeSig: "1/4" }));
+      setMetB((p) => ({ ...p, timeSig: "1/4" }));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hardStop, relBpmBase]);
