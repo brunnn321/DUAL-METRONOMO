@@ -109,29 +109,31 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
   const totalB = beatsPerMeasure(metB.timeSig);
   const lcmAB  = lcm(totalA, totalB);
   const CA = "#ff6b4a", CB = "#4ad9ff";
-  const S = 260, cx = 130, cy = 130, rA = 100, rB = 64;
+  const S = 320, cx = 160, cy = 160, rA = 128, rB = 84;
+  const pulse = (metA.beat === 0 || metB.beat === 0) && (runningA || runningB);
 
   useEffect(() => {
     if (metA.beat === 0 && metB.beat === 0 && (runningA || runningB)) {
       setCoincide(true);
       clearTimeout(tRef.current);
-      tRef.current = setTimeout(() => setCoincide(false), 500);
+      tRef.current = setTimeout(() => setCoincide(false), 550);
     }
   }, [metA.beat, metB.beat, runningA, runningB]);
 
   const ring = (total, r, activeBeat, color) => {
-    const dr = total <= 8 ? 9 : total <= 12 ? 7 : 6;
+    const dr = total <= 8 ? 12 : total <= 12 ? 9 : 7;
     return Array.from({ length:total }, (_, i) => {
       const a = (i / total) * 2 * Math.PI - Math.PI / 2;
       const x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
       const on = activeBeat === i;
       return (
         <g key={i}>
-          {on && <circle cx={x} cy={y} r={dr+10} fill={`${color}33`} />}
-          <circle cx={x} cy={y} r={i === 0 ? dr+2 : dr}
-            fill={on ? color : i === 0 ? `${color}cc` : `${color}77`}
-            stroke={on ? "#fff" : "none"} strokeWidth={on ? 1.5 : 0}
-            style={{ filter: on ? `drop-shadow(0 0 12px ${color}) drop-shadow(0 0 4px #fff)` : "none", transition:"fill 0.05s" }} />
+          {on && <circle cx={x} cy={y} r={dr+16} fill={`${color}44`} />}
+          {on && <circle cx={x} cy={y} r={dr+9}  fill={`${color}22`} />}
+          <circle cx={x} cy={y} r={i === 0 ? dr+3 : dr}
+            fill={on ? color : i === 0 ? `${color}dd` : `${color}88`}
+            stroke={on ? "#fff" : "none"} strokeWidth={on ? 2 : 0}
+            style={{ filter: on ? `drop-shadow(0 0 18px ${color}) drop-shadow(0 0 6px #fff)` : "none", transition:"fill 0.05s" }} />
         </g>
       );
     });
@@ -140,21 +142,39 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
   const label = centerLabel ?? `${totalA}:${totalB}`;
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
-      <svg width={S} height={S} style={{ overflow:"visible" }}>
-        <circle cx={cx} cy={cy} r={rA} fill="none" stroke={`${CA}55`} strokeWidth={2} />
-        <circle cx={cx} cy={cy} r={rB} fill="none" stroke={`${CB}55`} strokeWidth={2} />
-        {coincide && <circle cx={cx} cy={cy} r={42} fill="#ffffff10" stroke="#ffffff55" strokeWidth={2} />}
-        {ring(totalA, rA, metA.beat, CA)}
-        {ring(totalB, rB, metB.beat, CB)}
-        <text x={cx} y={cy-8} textAnchor="middle"
-          fill={coincide ? "#fff" : "#bbb"} fontSize={20}
-          fontFamily="'JetBrains Mono',monospace" fontWeight="700"
-          style={{ transition:"fill 0.2s" }}>{label}</text>
-        <text x={cx} y={cy+9} textAnchor="middle" fill="#888" fontSize={9} fontFamily="monospace">
-          MCM = {lcmAB}
-        </text>
-      </svg>
+    <div style={{
+      display:"flex", flexDirection:"column", alignItems:"center", gap:10,
+      transform: pulse ? "scale(1.035)" : "scale(1)",
+      transition: pulse ? "transform 0.04s" : "transform 0.25s ease-out",
+    }}>
+      <div style={{ position:"relative" }}>
+        <div style={{
+          position:"absolute", inset:-30, borderRadius:"50%",
+          background: `radial-gradient(circle, ${coincide ? "#ffffff22" : `${CA}14`} 0%, transparent 70%)`,
+          transition:"background 0.3s", pointerEvents:"none",
+        }} />
+        <svg width={S} height={S} style={{ overflow:"visible", position:"relative" }}>
+          <defs>
+            <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor={coincide ? "#ffffff33" : "#ffffff0a"} />
+              <stop offset="100%" stopColor="transparent" />
+            </radialGradient>
+          </defs>
+          <circle cx={cx} cy={cy} r={rA+4} fill="url(#centerGlow)" />
+          <circle cx={cx} cy={cy} r={rA} fill="none" stroke={`${CA}77`} strokeWidth={3} />
+          <circle cx={cx} cy={cy} r={rB} fill="none" stroke={`${CB}77`} strokeWidth={3} />
+          {coincide && <circle cx={cx} cy={cy} r={54} fill="#ffffff14" stroke="#ffffff88" strokeWidth={2.5} style={{ filter:"drop-shadow(0 0 16px #fff)" }} />}
+          {ring(totalA, rA, metA.beat, CA)}
+          {ring(totalB, rB, metB.beat, CB)}
+          <text x={cx} y={cy-10} textAnchor="middle"
+            fill={coincide ? "#fff" : "#ddd"} fontSize={30}
+            fontFamily="'JetBrains Mono',monospace" fontWeight="800"
+            style={{ transition:"fill 0.2s", filter: coincide ? "drop-shadow(0 0 10px #fff)" : "none" }}>{label}</text>
+          <text x={cx} y={cy+13} textAnchor="middle" fill="#999" fontSize={11} fontFamily="monospace" fontWeight="600">
+            MCM = {lcmAB}
+          </text>
+        </svg>
+      </div>
       {showSubtitle !== false && (
         <div style={{ fontFamily:"monospace", fontSize:11, color:"#777", textAlign:"center" }}>
           Polimetría {totalA} contra {totalB}
@@ -946,9 +966,6 @@ export default function DualMetronome() {
       {/* ── DUAL LIBRE (secondary) ── */}
       {!isMetrica && (
         <>
-          <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
-            <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} />
-          </div>
           <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", maxWidth:880, margin:"0 auto" }}>
             <MetronomePanel color="A" state={metA} onChange={changeMetA} running={runningA} onToggle={toggleA} measures={measuresA} />
             <MetronomePanel color="B" state={metB} onChange={changeMetB} running={runningB} onToggle={toggleB} measures={measuresB} />
