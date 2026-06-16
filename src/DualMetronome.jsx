@@ -9,18 +9,6 @@ const lcm = (a, b) => (a * b) / gcd(a, b);
 const TIME_SIGNATURES = ["2/4","3/4","4/4","5/4","6/8","7/8","8/8","9/8","11/8","12/8","13/8"];
 const beatsPerMeasure = (sig) => parseInt(sig.split("/")[0]);
 
-const POLY_PRESETS = [
-  { label:"2:3", a:"2/4", b:"3/4" }, { label:"2:4", a:"2/4", b:"4/4" },
-  { label:"3:4", a:"3/4", b:"4/4" }, { label:"3:5", a:"3/4", b:"5/4" },
-  { label:"4:5", a:"4/4", b:"5/4" }, { label:"5:7", a:"5/4", b:"7/8" },
-  { label:"7:8", a:"7/8", b:"8/8" }, { label:"11:13", a:"11/8", b:"13/8" },
-];
-
-const SUBDIVISIONS = [
-  { key:1, label:"1/4" }, { key:2, label:"1/8" }, { key:3, label:"Tril" },
-  { key:4, label:"1/16" }, { key:5, label:"Qnt" }, { key:6, label:"Sxt" },
-];
-
 const SOUNDS = [
   { key:"click", label:"CLICK" }, { key:"beep",  label:"BEEP"  },
   { key:"wood",  label:"WOOD"  }, { key:"clave", label:"CLAVE" },
@@ -281,29 +269,6 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
   );
 }
 
-// ─── poly preset row ──────────────────────────────────────────────────────────
-function PolyPresets({ onSelect, active }) {
-  return (
-    <div style={{ textAlign:"center" }}>
-      <div style={{ color:"#444", fontSize:9, fontFamily:"monospace", letterSpacing:2, marginBottom:8 }}>PRESETS DE POLIMETRÍA</div>
-      <div style={{ display:"flex", gap:6, justifyContent:"center", flexWrap:"wrap" }}>
-        {POLY_PRESETS.map((p) => {
-          const on = active === p.label;
-          return (
-            <button key={p.label} onClick={() => onSelect(p)} style={{
-              background: on ? "#ff6b4a18" : "#1e2028",
-              border:`1px solid ${on ? "#ff6b4a" : "#3a3d47"}`,
-              borderRadius:6, color: on ? "#ff6b4a" : "#666",
-              fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight: on ? 700 : 400,
-              padding:"6px 12px", cursor:"pointer", transition:"all 0.15s",
-            }}>{p.label}</button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 // ─── picker ───────────────────────────────────────────────────────────────────
 function Picker({ label, items, value, onChange, accent }) {
   return (
@@ -329,7 +294,8 @@ function Picker({ label, items, value, onChange, accent }) {
 
 // ─── metronome panel ──────────────────────────────────────────────────────────
 function MetronomePanel({ color, state, onChange, running, onToggle, measures }) {
-  const { bpm, timeSig, volume, muted, beat, strongSound, weakSound, subdivision } = state;
+  const { bpm, timeSig, volume, muted, beat, strongSound, weakSound } = state;
+  const baseBpm = state.baseBpm ?? bpm;
   const tapRef = useRef([]);
   const accent    = color === "A" ? "#ff6b4a" : "#4ad9ff";
   const dimAccent = color === "A" ? "#6a2a18" : "#174d5e";
@@ -343,7 +309,7 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures })
       const ints = []; for (let i = 1; i < taps.length; i++) ints.push(taps[i] - taps[i-1]);
       const avg = ints.reduce((a, b) => a + b, 0) / ints.length;
       const v = Math.round(60000 / avg);
-      if (v >= 30 && v <= 300) onChange({ bpm: v });
+      if (v >= 30 && v <= 300) onChange({ bpm: v, baseBpm: v });
     }
   };
 
@@ -383,14 +349,14 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures })
 
       <div>
         <input type="range" min={30} max={300} value={Math.round(bpm)}
-          onChange={(e) => onChange({ bpm: parseInt(e.target.value) })}
+          onChange={(e) => { const v = parseInt(e.target.value); onChange({ bpm: v, baseBpm: v }); }}
           style={{ width:"100%", accentColor:accent, cursor:"pointer" }} />
         <div style={{ display:"flex", justifyContent:"space-between", color:"#444", fontSize:9, fontFamily:"monospace" }}><span>30</span><span>300</span></div>
       </div>
 
       <div style={{ display:"flex", gap:5, justifyContent:"center" }}>
         {[-10,-1,+1,+10].map((d) => (
-          <button key={d} onClick={() => onChange({ bpm: Math.min(300, Math.max(30, Math.round(bpm)+d)) })} style={{ background:"#252830", border:`1px solid ${accent}33`, borderRadius:5, color:accent, fontFamily:"monospace", fontSize:12, padding:"5px 10px", cursor:"pointer" }}>{d > 0 ? `+${d}` : d}</button>
+          <button key={d} onClick={() => { const v = Math.min(300, Math.max(30, Math.round(bpm)+d)); onChange({ bpm: v, baseBpm: v }); }} style={{ background:"#252830", border:`1px solid ${accent}33`, borderRadius:5, color:accent, fontFamily:"monospace", fontSize:12, padding:"5px 10px", cursor:"pointer" }}>{d > 0 ? `+${d}` : d}</button>
         ))}
       </div>
 
@@ -412,9 +378,26 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures })
       </div>
 
       <div style={{ borderTop:`1px solid ${accent}1a`, paddingTop:12, display:"flex", flexDirection:"column", gap:8 }}>
-        <Picker label="FUERTE (beat 1)" items={SOUNDS}       value={strongSound}  onChange={(v) => onChange({ strongSound:v })}  accent={accent} />
-        <Picker label="DÉBIL"           items={SOUNDS}       value={weakSound}    onChange={(v) => onChange({ weakSound:v })}    accent={accent} />
-        <Picker label="SUBDIVISIÓN"     items={SUBDIVISIONS} value={subdivision}  onChange={(v) => onChange({ subdivision:v })}  accent={accent} />
+        <Picker label="FUERTE (beat 1)" items={SOUNDS} value={strongSound} onChange={(v) => onChange({ strongSound:v })} accent={accent} />
+        <Picker label="DÉBIL"           items={SOUNDS} value={weakSound}   onChange={(v) => onChange({ weakSound:v })}   accent={accent} />
+        <div>
+          <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:5 }}>TIEMPO</div>
+          <div style={{ display:"flex", gap:4 }}>
+            {[["HALF TIME",0.5],["NORMAL",1],["DOUBLE TIME",2]].map(([lbl, mult]) => {
+              const target = Math.round(baseBpm * mult);
+              const on = Math.round(bpm) === target;
+              return (
+                <button key={lbl} onClick={() => onChange({ bpm: Math.min(300, Math.max(30, target)) })} style={{
+                  flex:1, background: on ? accent : "#252830",
+                  border:`1px solid ${on ? accent : "#3a3d47"}`,
+                  borderRadius:4, color: on ? "#15171c" : "#666",
+                  fontFamily:"monospace", fontSize:9, fontWeight: on ? 700 : 400,
+                  padding:"5px 4px", cursor:"pointer", transition:"all 0.1s",
+                }}>{lbl}</button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       <div style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -622,8 +605,8 @@ function TapTempoButton({ onTap }) {
 function loadPresets() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]"); } catch { return []; } }
 function savePresets(p) { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); }
 
-const DEFAULT_A = { bpm:120, timeSig:"4/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, strongSound:"click", weakSound:"beep",  subdivision:1 };
-const DEFAULT_B = { bpm:90,  timeSig:"3/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, strongSound:"click", weakSound:"wood",  subdivision:1 };
+const DEFAULT_A = { bpm:120, baseBpm:120, timeSig:"4/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, strongSound:"click", weakSound:"beep",  subdivision:1 };
+const DEFAULT_B = { bpm:90,  baseBpm:90,  timeSig:"3/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, strongSound:"click", weakSound:"wood",  subdivision:1 };
 
 // ─── main ─────────────────────────────────────────────────────────────────────
 export default function DualMetronome() {
@@ -645,13 +628,12 @@ export default function DualMetronome() {
   // metA/metB start already aligned with the default polimetría params
   // (relBase=4, relDeriv=5, relBpmBase=90) so the visualizer's ring counts
   // and MCM match the "5:4" label from the very first render.
-  const [metA, setMetA] = useState(() => ({ ...DEFAULT_A, bpm:90,    timeSig:"4/4" }));
-  const [metB, setMetB] = useState(() => ({ ...DEFAULT_B, bpm:112.5, timeSig:"5/4" }));
+  const [metA, setMetA] = useState(() => ({ ...DEFAULT_A, bpm:90,    baseBpm:90,    timeSig:"4/4" }));
+  const [metB, setMetB] = useState(() => ({ ...DEFAULT_B, bpm:112.5, baseBpm:112.5, timeSig:"5/4" }));
   const [measuresA, setMeasuresA] = useState(0);
   const [measuresB, setMeasuresB] = useState(0);
   const [presets,    setPresets]   = useState(loadPresets);
   const [presetName, setPresetName] = useState("");
-  const [activePolyPreset, setActivePolyPreset] = useState(null);
   const [flashOn, setFlashOn] = useState(true);
 
   // audio refs — the scheduler reads exclusively from these, never from state
@@ -831,14 +813,12 @@ export default function DualMetronome() {
   const changeMetA = useCallback((patch) => {
     metARef.current = { ...metARef.current, ...patch };
     setMetA((p) => ({ ...p, ...patch }));
-    setActivePolyPreset(null);
     if (runARef.current && Object.keys(patch).some((k) => NEEDS_RESTART.has(k))) restartNow();
   }, [restartNow]);
 
   const changeMetB = useCallback((patch) => {
     metBRef.current = { ...metBRef.current, ...patch };
     setMetB((p) => ({ ...p, ...patch }));
-    setActivePolyPreset(null);
     if (runBRef.current && Object.keys(patch).some((k) => NEEDS_RESTART.has(k))) restartNow();
   }, [restartNow]);
 
@@ -875,18 +855,17 @@ export default function DualMetronome() {
   }, [startDual]);
 
   // ── presets ────────────────────────────────────────────────────────────────
-  const applyPolyPreset = (p) => { changeMetA({ timeSig:p.a }); changeMetB({ timeSig:p.b }); setActivePolyPreset(p.label); };
   const savePreset = () => {
     const name  = presetName.trim() || `Preset ${presets.length + 1}`;
     const entry = { id:Date.now(), name,
-      a:{ bpm:metA.bpm, timeSig:metA.timeSig, strongSound:metA.strongSound, weakSound:metA.weakSound, subdivision:metA.subdivision },
-      b:{ bpm:metB.bpm, timeSig:metB.timeSig, strongSound:metB.strongSound, weakSound:metB.weakSound, subdivision:metB.subdivision },
+      a:{ bpm:metA.bpm, baseBpm:metA.baseBpm ?? metA.bpm, timeSig:metA.timeSig, strongSound:metA.strongSound, weakSound:metA.weakSound },
+      b:{ bpm:metB.bpm, baseBpm:metB.baseBpm ?? metB.bpm, timeSig:metB.timeSig, strongSound:metB.strongSound, weakSound:metB.weakSound },
     };
     const u = [...presets, entry]; setPresets(u); savePresets(u); setPresetName("");
   };
   const loadPreset = (p) => {
-    changeMetA({ ...p.a, strongSound:p.a.strongSound??"click", weakSound:p.a.weakSound??"beep", subdivision:p.a.subdivision??1 });
-    changeMetB({ ...p.b, strongSound:p.b.strongSound??"click", weakSound:p.b.weakSound??"wood", subdivision:p.b.subdivision??1 });
+    changeMetA({ ...p.a, baseBpm:p.a.baseBpm ?? p.a.bpm, strongSound:p.a.strongSound??"click", weakSound:p.a.weakSound??"beep" });
+    changeMetB({ ...p.b, baseBpm:p.b.baseBpm ?? p.b.bpm, strongSound:p.b.strongSound??"click", weakSound:p.b.weakSound??"wood" });
   };
   const deletePreset = (id) => { const u = presets.filter((p) => p.id !== id); setPresets(u); savePresets(u); };
 
@@ -938,9 +917,6 @@ export default function DualMetronome() {
       {/* ── DUAL LIBRE (secondary) ── */}
       {!isMetrica && (
         <>
-          <div style={{ maxWidth:880, margin:"0 auto 18px" }}>
-            <PolyPresets onSelect={applyPolyPreset} active={activePolyPreset} />
-          </div>
           <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
             <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} />
           </div>
