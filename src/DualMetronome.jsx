@@ -432,28 +432,26 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures })
 // ─── dual switch ──────────────────────────────────────────────────────────────
 function DualSwitch({ on, onToggle }) {
   return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
-      <div style={{ color:"#444", fontSize:9, fontFamily:"monospace", letterSpacing:3 }}>DUAL SYNC</div>
-      <button onClick={onToggle} style={{
-        display:"flex", alignItems:"center", gap:12,
-        background: on ? "#2a1010" : "#0d2616",
-        border:`2px solid ${on ? "#ff4a4a" : "#4aff7a"}`,
-        borderRadius:12, padding:"14px 36px",
-        cursor:"pointer", userSelect:"none",
-        boxShadow: on ? "0 0 20px #ff4a4a22" : "0 0 24px #4aff7a44",
-        transition:"all 0.2s",
-      }}>
-        {on
-          ? <Square size={22} color="#ff4a4a" />
-          : <Play  size={22} color="#4aff7a" />
-        }
-        <span style={{
-          fontFamily:"'JetBrains Mono',monospace", fontSize:16, fontWeight:700, letterSpacing:2,
-          color: on ? "#ff4a4a" : "#4aff7a",
-          transition:"color 0.2s",
-        }}>{on ? "DETENER" : "INICIAR"}</span>
-      </button>
-    </div>
+    <button onClick={onToggle} style={{
+      position:"fixed", bottom:24, left:"50%", transform:"translateX(-50%)", zIndex:1001,
+      display:"flex", alignItems:"center", gap:12,
+      background: on ? "#2a1010" : "#0d2616",
+      border:`2px solid ${on ? "#ff4a4a" : "#4aff7a"}`,
+      borderRadius:12, padding:"14px 36px",
+      cursor:"pointer", userSelect:"none",
+      boxShadow: on ? "0 0 20px #ff4a4a44" : "0 0 24px #4aff7a55",
+      transition:"all 0.2s",
+    }}>
+      {on
+        ? <Square size={22} color="#ff4a4a" />
+        : <Play  size={22} color="#4aff7a" />
+      }
+      <span style={{
+        fontFamily:"'JetBrains Mono',monospace", fontSize:16, fontWeight:700, letterSpacing:2,
+        color: on ? "#ff4a4a" : "#4aff7a",
+        transition:"color 0.2s",
+      }}>{on ? "DETENER" : "INICIAR"}</span>
+    </button>
   );
 }
 
@@ -606,6 +604,20 @@ function FlashToggle({ on, onToggle }) {
     }}>
       <Lightbulb size={18} fill={on ? "#ffd04a" : "none"} />
     </button>
+  );
+}
+
+// ─── tap tempo button (top-left, DUAL SINC mode) ──────────────────────────────
+function TapTempoButton({ onTap }) {
+  return (
+    <button onClick={onTap} title="Tap tempo" style={{
+      position:"fixed", top:16, left:16, zIndex:1000,
+      display:"flex", alignItems:"center", justifyContent:"center",
+      width:40, height:40, borderRadius:10,
+      background:"#ff6b4a1a", border:"1px solid #ff6b4a55",
+      color:"#ff6b4a", cursor:"pointer", transition:"all 0.1s",
+      fontFamily:"monospace", fontSize:9, fontWeight:700, letterSpacing:0.5,
+    }}>TAP</button>
   );
 }
 
@@ -786,6 +798,20 @@ export default function DualMetronome() {
     applyPoliParams(v, relBaseRef.current, relDerivRef.current);
   }, [applyPoliParams]);
 
+  // global tap tempo (top-left button, DUAL SINC mode) — feeds BPM Base
+  const tapRefGlobal = useRef([]);
+  const handleGlobalTap = useCallback(() => {
+    const now = performance.now();
+    const taps = tapRefGlobal.current;
+    taps.push(now); if (taps.length > 6) taps.shift();
+    if (taps.length >= 2) {
+      const ints = []; for (let i = 1; i < taps.length; i++) ints.push(taps[i] - taps[i-1]);
+      const avg = ints.reduce((a, b) => a + b, 0) / ints.length;
+      const v = Math.round(60000 / avg);
+      if (v >= 30 && v <= 300) handleRelBpmBase(v);
+    }
+  }, [handleRelBpmBase]);
+
   const handleRelBase = useCallback((v) => {
     setRelBase(v); relBaseRef.current = v;
     applyPoliParams(relBpmBase, v, relDerivRef.current);
@@ -869,9 +895,14 @@ export default function DualMetronome() {
   const centerLabel = isMetrica ? `${relDeriv}:${relBase}` : undefined;
 
   return (
-    <div style={{ minHeight:"100vh", background:"#15171c", color:"#ddd", fontFamily:"system-ui,sans-serif", padding:"24px 16px", boxSizing:"border-box" }}>
+    <div style={{ minHeight:"100vh", background:"#15171c", color:"#ddd", fontFamily:"system-ui,sans-serif", padding: flashOn ? 0 : "24px 16px", boxSizing:"border-box" }}>
       <BeatLights metA={metA} metB={metB} runningA={runningA} runningB={runningB} measuresA={measuresA} measuresB={measuresB} enabled={flashOn} />
       <FlashToggle on={flashOn} onToggle={() => setFlashOn((v) => !v)} />
+      {isMetrica && <TapTempoButton onTap={handleGlobalTap} />}
+      <DualSwitch on={dualOn} onToggle={toggleDual} />
+
+      {!flashOn && (
+      <>
       {/* header */}
       <div style={{ textAlign:"center", marginBottom:18 }}>
         <h1 style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, color:"#eee", margin:0, letterSpacing:4 }}>
@@ -890,16 +921,13 @@ export default function DualMetronome() {
           <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
             <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} />
           </div>
-          <div style={{ textAlign:"center", marginBottom:22 }}>
-            <DualSwitch on={dualOn} onToggle={toggleDual} />
-          </div>
           <div style={{ marginBottom:20 }}>
             <PoliPanel
               bpmBase={relBpmBase} base={relBase} derivado={relDeriv}
               onBpmBase={handleRelBpmBase} onBase={handleRelBase} onDeriv={handleRelDeriv}
             />
           </div>
-          <div style={{ maxWidth:680, margin:"0 auto" }}>
+          <div style={{ maxWidth:680, margin:"0 auto 90px" }}>
             <ProgressivePractice onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} />
           </div>
         </>
@@ -914,9 +942,6 @@ export default function DualMetronome() {
           <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
             <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} />
           </div>
-          <div style={{ textAlign:"center", margin:"0 0 22px" }}>
-            <DualSwitch on={dualOn} onToggle={toggleDual} />
-          </div>
           <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", maxWidth:880, margin:"0 auto" }}>
             <MetronomePanel color="A" state={metA} onChange={changeMetA} running={runningA} onToggle={toggleA} measures={measuresA} />
             <MetronomePanel color="B" state={metB} onChange={changeMetB} running={runningB} onToggle={toggleB} measures={measuresB} />
@@ -925,7 +950,7 @@ export default function DualMetronome() {
             <ProgressivePractice onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} />
           </div>
           {/* presets */}
-          <div style={{ maxWidth:880, margin:"0 auto", background:"#1e2028", borderRadius:12, padding:20 }}>
+          <div style={{ maxWidth:880, margin:"0 auto 90px", background:"#1e2028", borderRadius:12, padding:20 }}>
             <div style={{ color:"#444", fontSize:9, fontFamily:"monospace", marginBottom:14, letterSpacing:2 }}>PRESETS</div>
             <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
               <input value={presetName} onChange={(e) => setPresetName(e.target.value)}
@@ -954,6 +979,8 @@ export default function DualMetronome() {
             )}
           </div>
         </>
+      )}
+      </>
       )}
     </div>
   );
