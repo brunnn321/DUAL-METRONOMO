@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Play, Square, Volume2, VolumeX, Save, Trash2, ChevronRight } from "lucide-react";
+import { Play, Square, Volume2, VolumeX, Save, Trash2, ChevronRight, Lightbulb } from "lucide-react";
 
 // ─── math ─────────────────────────────────────────────────────────────────────
 const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
@@ -547,7 +547,8 @@ function ProgressivePractice({ onBpmChange, onActivate, running }) {
 }
 
 // ─── screen flash ─────────────────────────────────────────────────────────────
-function ScreenFlash({ metA, metB, runningA, runningB }) {
+function ScreenFlash({ metA, metB, runningA, runningB, enabled }) {
+  if (!enabled) return null;
   const onA = runningA && metA.beat >= 0;
   const onB = runningB && metB.beat >= 0;
   const accentA = metA.beat === 0;
@@ -555,7 +556,8 @@ function ScreenFlash({ metA, metB, runningA, runningB }) {
   const overlay = (on, accent, color) => ({
     position:"fixed", inset:0, pointerEvents:"none", zIndex:999,
     background: color,
-    opacity: on ? (accent ? 0.18 : 0.10) : 0,
+    opacity: on ? (accent ? 0.85 : 0.55) : 0,
+    mixBlendMode: "screen",
     transition: on ? "opacity 0.01s" : "opacity 0.18s ease-out",
   });
   return (
@@ -563,6 +565,24 @@ function ScreenFlash({ metA, metB, runningA, runningB }) {
       <div style={overlay(onA, accentA, "#ff6b4a")} />
       <div style={overlay(onB, accentB, "#4ad9ff")} />
     </>
+  );
+}
+
+// ─── flash toggle button ──────────────────────────────────────────────────────
+function FlashToggle({ on, onToggle }) {
+  return (
+    <button onClick={onToggle} title={on ? "Desactivar destello de pantalla" : "Activar destello de pantalla"} style={{
+      position:"fixed", top:16, right:16, zIndex:1000,
+      display:"flex", alignItems:"center", justifyContent:"center",
+      width:40, height:40, borderRadius:10,
+      background: on ? "#ffd04a1a" : "#1e2028",
+      border:`1px solid ${on ? "#ffd04a" : "#3a3d47"}`,
+      color: on ? "#ffd04a" : "#555",
+      cursor:"pointer", transition:"all 0.15s",
+      boxShadow: on ? "0 0 12px #ffd04a44" : "none",
+    }}>
+      <Lightbulb size={18} fill={on ? "#ffd04a" : "none"} />
+    </button>
   );
 }
 
@@ -597,6 +617,7 @@ export default function DualMetronome() {
   const [presets,    setPresets]   = useState(loadPresets);
   const [presetName, setPresetName] = useState("");
   const [activePolyPreset, setActivePolyPreset] = useState(null);
+  const [flashOn, setFlashOn] = useState(true);
 
   // audio refs — the scheduler reads exclusively from these, never from state
   const ctxRef   = useRef(null);
@@ -826,7 +847,8 @@ export default function DualMetronome() {
 
   return (
     <div style={{ minHeight:"100vh", background:"#15171c", color:"#ddd", fontFamily:"system-ui,sans-serif", padding:"24px 16px", boxSizing:"border-box" }}>
-      <ScreenFlash metA={metA} metB={metB} runningA={runningA} runningB={runningB} />
+      <ScreenFlash metA={metA} metB={metB} runningA={runningA} runningB={runningB} enabled={flashOn} />
+      <FlashToggle on={flashOn} onToggle={() => setFlashOn((v) => !v)} />
       {/* header */}
       <div style={{ textAlign:"center", marginBottom:18 }}>
         <h1 style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, color:"#eee", margin:0, letterSpacing:4 }}>
