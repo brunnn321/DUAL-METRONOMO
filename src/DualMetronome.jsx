@@ -118,17 +118,18 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
   }, [metA.beat, metB.beat, runningA, runningB]);
 
   const ring = (total, r, activeBeat, color) => {
-    const dr = total <= 8 ? 7 : total <= 12 ? 5 : 4;
+    const dr = total <= 8 ? 9 : total <= 12 ? 7 : 6;
     return Array.from({ length:total }, (_, i) => {
       const a = (i / total) * 2 * Math.PI - Math.PI / 2;
       const x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
       const on = activeBeat === i;
       return (
         <g key={i}>
-          {on && <circle cx={x} cy={y} r={dr+6} fill={`${color}1a`} />}
-          <circle cx={x} cy={y} r={i === 0 ? dr+1 : dr}
-            fill={on ? color : i === 0 ? `${color}55` : `${color}22`}
-            style={{ filter: on ? `drop-shadow(0 0 5px ${color})` : "none", transition:"fill 0.05s" }} />
+          {on && <circle cx={x} cy={y} r={dr+10} fill={`${color}33`} />}
+          <circle cx={x} cy={y} r={i === 0 ? dr+2 : dr}
+            fill={on ? color : i === 0 ? `${color}cc` : `${color}77`}
+            stroke={on ? "#fff" : "none"} strokeWidth={on ? 1.5 : 0}
+            style={{ filter: on ? `drop-shadow(0 0 12px ${color}) drop-shadow(0 0 4px #fff)` : "none", transition:"fill 0.05s" }} />
         </g>
       );
     });
@@ -139,29 +140,29 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
       <svg width={S} height={S} style={{ overflow:"visible" }}>
-        <circle cx={cx} cy={cy} r={rA} fill="none" stroke={`${CA}18`} strokeWidth={1.5} />
-        <circle cx={cx} cy={cy} r={rB} fill="none" stroke={`${CB}18`} strokeWidth={1.5} />
-        {coincide && <circle cx={cx} cy={cy} r={42} fill="#ffffff07" stroke="#ffffff22" strokeWidth={1.5} />}
+        <circle cx={cx} cy={cy} r={rA} fill="none" stroke={`${CA}55`} strokeWidth={2} />
+        <circle cx={cx} cy={cy} r={rB} fill="none" stroke={`${CB}55`} strokeWidth={2} />
+        {coincide && <circle cx={cx} cy={cy} r={42} fill="#ffffff10" stroke="#ffffff55" strokeWidth={2} />}
         {ring(totalA, rA, metA.beat, CA)}
         {ring(totalB, rB, metB.beat, CB)}
         <text x={cx} y={cy-8} textAnchor="middle"
-          fill={coincide ? "#fff" : "#777"} fontSize={20}
+          fill={coincide ? "#fff" : "#bbb"} fontSize={20}
           fontFamily="'JetBrains Mono',monospace" fontWeight="700"
           style={{ transition:"fill 0.2s" }}>{label}</text>
-        <text x={cx} y={cy+9} textAnchor="middle" fill="#444" fontSize={9} fontFamily="monospace">
+        <text x={cx} y={cy+9} textAnchor="middle" fill="#888" fontSize={9} fontFamily="monospace">
           MCM = {lcmAB}
         </text>
-        <circle cx={cx-36} cy={S-14} r={3.5} fill={CA} />
-        <text x={cx-28} y={S-10} fill="#444" fontSize={9} fontFamily="monospace">MET A</text>
-        <circle cx={cx+14} cy={S-14} r={3.5} fill={CB} />
-        <text x={cx+22} y={S-10} fill="#444" fontSize={9} fontFamily="monospace">MET B</text>
+        <circle cx={cx-36} cy={S-14} r={4} fill={CA} />
+        <text x={cx-28} y={S-10} fill="#aaa" fontSize={9} fontFamily="monospace">MET A</text>
+        <circle cx={cx+14} cy={S-14} r={4} fill={CB} />
+        <text x={cx+22} y={S-10} fill="#aaa" fontSize={9} fontFamily="monospace">MET B</text>
       </svg>
       {showSubtitle !== false && (
-        <div style={{ fontFamily:"monospace", fontSize:11, color:"#555", textAlign:"center" }}>
+        <div style={{ fontFamily:"monospace", fontSize:11, color:"#777", textAlign:"center" }}>
           Polimetría {totalA} contra {totalB}
-          <span style={{ margin:"0 8px", color:"#333" }}>·</span>
+          <span style={{ margin:"0 8px", color:"#444" }}>·</span>
           Coinciden cada{" "}
-          <span style={{ color: coincide ? "#fff" : "#888", fontWeight:700, transition:"color 0.2s" }}>{lcmAB}</span> pulsos
+          <span style={{ color: coincide ? "#fff" : "#ccc", fontWeight:700, transition:"color 0.2s" }}>{lcmAB}</span> pulsos
         </div>
       )}
     </div>
