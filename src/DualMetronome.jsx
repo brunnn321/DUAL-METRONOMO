@@ -556,7 +556,7 @@ function ScreenFlash({ metA, metB, runningA, runningB, enabled }) {
   const overlay = (on, accent, color) => ({
     position:"fixed", inset:0, pointerEvents:"none", zIndex:999,
     background: color,
-    opacity: on ? (accent ? 0.85 : 0.55) : 0,
+    opacity: on ? 1 : 0,
     mixBlendMode: "screen",
     transition: on ? "opacity 0.01s" : "opacity 0.18s ease-out",
   });
