@@ -646,8 +646,11 @@ export default function DualMetronome() {
   const [runningA, setRunningA] = useState(false);
   const [runningB, setRunningB] = useState(false);
   const [dualOn,   setDualOn]   = useState(false);
-  const [metA, setMetA] = useState(DEFAULT_A);
-  const [metB, setMetB] = useState(DEFAULT_B);
+  // metA/metB start already aligned with the default polimetría params
+  // (relBase=4, relDeriv=5, relBpmBase=90) so the visualizer's ring counts
+  // and MCM match the "5:4" label from the very first render.
+  const [metA, setMetA] = useState(() => ({ ...DEFAULT_A, bpm:90,    timeSig:"4/4" }));
+  const [metB, setMetB] = useState(() => ({ ...DEFAULT_B, bpm:112.5, timeSig:"5/4" }));
   const [measuresA, setMeasuresA] = useState(0);
   const [measuresB, setMeasuresB] = useState(0);
   const [presets,    setPresets]   = useState(loadPresets);
@@ -894,15 +897,17 @@ export default function DualMetronome() {
   // ── render ─────────────────────────────────────────────────────────────────
   const isMetrica = mode === "metrica";
   const centerLabel = isMetrica ? `${relDeriv}:${relBase}` : undefined;
+  // full-screen color/performance view only while something is actually playing
+  const performanceMode = flashOn && (runningA || runningB);
 
   return (
-    <div style={{ minHeight:"100vh", background:"#15171c", color:"#ddd", fontFamily:"system-ui,sans-serif", padding: flashOn ? 0 : "24px 16px", boxSizing:"border-box" }}>
-      <BeatLights metA={metA} metB={metB} runningA={runningA} runningB={runningB} measuresA={measuresA} measuresB={measuresB} enabled={flashOn} />
+    <div style={{ minHeight:"100vh", background:"#15171c", color:"#ddd", fontFamily:"system-ui,sans-serif", padding: performanceMode ? 0 : "24px 16px", boxSizing:"border-box" }}>
+      <BeatLights metA={metA} metB={metB} runningA={runningA} runningB={runningB} measuresA={measuresA} measuresB={measuresB} enabled={performanceMode} />
       <FlashToggle on={flashOn} onToggle={() => setFlashOn((v) => !v)} />
       {isMetrica && <TapTempoButton onTap={handleGlobalTap} />}
       <DualSwitch on={dualOn} onToggle={toggleDual} />
 
-      {!flashOn && (
+      {!performanceMode && (
       <>
       {/* header */}
       <div style={{ textAlign:"center", marginBottom:18 }}>
