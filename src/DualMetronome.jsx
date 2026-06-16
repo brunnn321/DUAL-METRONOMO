@@ -82,16 +82,17 @@ function synthClick(ctx, time, soundKey, volume) {
 function ModeSelector({ mode, setMode }) {
   return (
     <div style={{ display:"flex", background:"#1a1c22", borderRadius:8, padding:3, maxWidth:340, margin:"0 auto", gap:2 }}>
-      {[["metrica","DUAL SINC"],["libre","DUAL LIBRE"]].map(([k, lbl]) => {
+      {[["metrica","DUAL SINC","#a78bfa"],["libre","DUAL LIBRE","#ffd04a"]].map(([k, lbl, color]) => {
         const on = mode === k;
         return (
           <button key={k} onClick={() => setMode(k)} style={{
-            flex:1, background: on ? "#252830" : "none",
-            border:`1px solid ${on ? "#3a3d47" : "transparent"}`,
-            borderRadius:6, color: on ? "#ddd" : "#444",
+            flex:1, background: on ? `${color}1a` : "none",
+            border:`1px solid ${on ? color : "transparent"}`,
+            borderRadius:6, color: on ? color : "#444",
             fontFamily:"'JetBrains Mono',monospace", fontSize:10,
             fontWeight: on ? 600 : 400, padding:"8px 10px",
             cursor:"pointer", letterSpacing:0.5, transition:"all 0.15s",
+            boxShadow: on ? `0 0 10px ${color}33` : "none",
           }}>{lbl}</button>
         );
       })}
@@ -152,10 +153,6 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
         <text x={cx} y={cy+9} textAnchor="middle" fill="#888" fontSize={9} fontFamily="monospace">
           MCM = {lcmAB}
         </text>
-        <circle cx={cx-36} cy={S-14} r={4} fill={CA} />
-        <text x={cx-28} y={S-10} fill="#aaa" fontSize={9} fontFamily="monospace">MET A</text>
-        <circle cx={cx+14} cy={S-14} r={4} fill={CB} />
-        <text x={cx+22} y={S-10} fill="#aaa" fontSize={9} fontFamily="monospace">MET B</text>
       </svg>
       {showSubtitle !== false && (
         <div style={{ fontFamily:"monospace", fontSize:11, color:"#777", textAlign:"center" }}>
@@ -358,8 +355,7 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures })
       display:"flex", flexDirection:"column", gap:14,
       flex:1, minWidth:270, transition:"border-color 0.25s",
     }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-        <span style={{ background:accent, color:"#15171c", fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:12, padding:"2px 10px", borderRadius:4, letterSpacing:2 }}>MET {color}</span>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end" }}>
         <button onClick={onToggle} style={{
           background: running ? "#2a1010" : "#0d2616",
           border:`1px solid ${running ? "#ff4a4a" : "#4aff7a"}`,
@@ -912,7 +908,7 @@ export default function DualMetronome() {
       {/* header */}
       <div style={{ textAlign:"center", marginBottom:18 }}>
         <h1 style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, color:"#eee", margin:0, letterSpacing:4 }}>
-          DUAL <span style={{ color:"#ff6b4a" }}>METRO</span><span style={{ color:"#4ad9ff" }}>NOME</span>
+          DUAL <span style={{ color:"#ff6b4a" }}>PUL</span><span style={{ color:"#4ad9ff" }}>SE</span>
         </h1>
       </div>
 
