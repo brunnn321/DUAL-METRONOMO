@@ -82,7 +82,7 @@ function synthClick(ctx, time, soundKey, volume) {
 function ModeSelector({ mode, setMode }) {
   return (
     <div style={{ display:"flex", background:"#1a1c22", borderRadius:8, padding:3, maxWidth:340, margin:"0 auto", gap:2 }}>
-      {[["metrica","POLIMETRÍA"],["libre","DUAL LIBRE"]].map(([k, lbl]) => {
+      {[["metrica","DUAL SINC"],["libre","DUAL LIBRE"]].map(([k, lbl]) => {
         const on = mode === k;
         return (
           <button key={k} onClick={() => setMode(k)} style={{
@@ -546,24 +546,47 @@ function ProgressivePractice({ onBpmChange, onActivate, running }) {
   );
 }
 
-// ─── screen flash ─────────────────────────────────────────────────────────────
-function ScreenFlash({ metA, metB, runningA, runningB, enabled }) {
+// ─── beat lights (split-screen, A on top half / B on bottom half) ────────────
+function BeatLights({ metA, metB, runningA, runningB, measuresA, measuresB, enabled }) {
   if (!enabled) return null;
+  const totalA = beatsPerMeasure(metA.timeSig);
+  const totalB = beatsPerMeasure(metB.timeSig);
   const onA = runningA && metA.beat >= 0;
   const onB = runningB && metB.beat >= 0;
-  const accentA = metA.beat === 0;
-  const accentB = metB.beat === 0;
-  const overlay = (on, accent, color) => ({
-    position:"fixed", inset:0, pointerEvents:"none", zIndex:999,
-    background: color,
-    opacity: on ? 1 : 0,
-    mixBlendMode: "screen",
-    transition: on ? "opacity 0.01s" : "opacity 0.18s ease-out",
+  const dispA = metA.lastBeat >= 0 ? metA.lastBeat + 1 : "–";
+  const dispB = metB.lastBeat >= 0 ? metB.lastBeat + 1 : "–";
+
+  const halfStyle = (on, color, top) => ({
+    position:"fixed", left:0, right:0, [top ? "top" : "bottom"]:0, height:"50vh",
+    pointerEvents:"none", zIndex:998,
+    background: on ? color : "transparent",
+    transition: on ? "background-color 0.01s" : "background-color 0.18s ease-out",
+    display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:6,
   });
+  const numStyle = (on, color, visible) => ({
+    fontFamily:"'JetBrains Mono',monospace", fontWeight:800, lineHeight:1,
+    fontSize:"min(20vw, 200px)",
+    color: on ? "#15171c" : color,
+    opacity: visible ? (on ? 0.92 : 0.22) : 0,
+    transition:"color 0.05s, opacity 0.15s",
+  });
+  const subStyle = (on, color, visible) => ({
+    fontFamily:"monospace", fontSize:18, letterSpacing:3, fontWeight:600,
+    color: on ? "#15171c" : color,
+    opacity: visible ? (on ? 0.8 : 0.28) : 0,
+    transition:"color 0.05s, opacity 0.15s",
+  });
+
   return (
     <>
-      <div style={overlay(onA, accentA, "#ff6b4a")} />
-      <div style={overlay(onB, accentB, "#4ad9ff")} />
+      <div style={halfStyle(onA, "#ff6b4a", true)}>
+        <span style={numStyle(onA, "#ff6b4a", runningA)}>{dispA}<span style={{ fontSize:"0.35em" }}>/{totalA}</span></span>
+        <span style={subStyle(onA, "#ff6b4a", runningA)}>MET A · BAR {String(measuresA).padStart(3,"0")}</span>
+      </div>
+      <div style={halfStyle(onB, "#4ad9ff", false)}>
+        <span style={numStyle(onB, "#4ad9ff", runningB)}>{dispB}<span style={{ fontSize:"0.35em" }}>/{totalB}</span></span>
+        <span style={subStyle(onB, "#4ad9ff", runningB)}>MET B · BAR {String(measuresB).padStart(3,"0")}</span>
+      </div>
     </>
   );
 }
@@ -590,8 +613,8 @@ function FlashToggle({ on, onToggle }) {
 function loadPresets() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]"); } catch { return []; } }
 function savePresets(p) { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); }
 
-const DEFAULT_A = { bpm:120, timeSig:"4/4", volume:0.7, muted:false, beat:-1, strongSound:"click", weakSound:"beep",  subdivision:1 };
-const DEFAULT_B = { bpm:90,  timeSig:"3/4", volume:0.7, muted:false, beat:-1, strongSound:"click", weakSound:"wood",  subdivision:1 };
+const DEFAULT_A = { bpm:120, timeSig:"4/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, strongSound:"click", weakSound:"beep",  subdivision:1 };
+const DEFAULT_B = { bpm:90,  timeSig:"3/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, strongSound:"click", weakSound:"wood",  subdivision:1 };
 
 // ─── main ─────────────────────────────────────────────────────────────────────
 export default function DualMetronome() {
@@ -667,7 +690,7 @@ export default function DualMetronome() {
           const cb    = beatIdx;
           const delay = Math.max(0, (t - ctx.currentTime) * 1000);
           setTimeout(() => {
-            setMet((p) => ({ ...p, beat: cb }));
+            setMet((p) => ({ ...p, beat: cb, lastBeat: cb }));
             setTimeout(() => setMet((p) => ({ ...p, beat: -1 })), 75);
           }, delay);
         }
@@ -847,7 +870,7 @@ export default function DualMetronome() {
 
   return (
     <div style={{ minHeight:"100vh", background:"#15171c", color:"#ddd", fontFamily:"system-ui,sans-serif", padding:"24px 16px", boxSizing:"border-box" }}>
-      <ScreenFlash metA={metA} metB={metB} runningA={runningA} runningB={runningB} enabled={flashOn} />
+      <BeatLights metA={metA} metB={metB} runningA={runningA} runningB={runningB} measuresA={measuresA} measuresB={measuresB} enabled={flashOn} />
       <FlashToggle on={flashOn} onToggle={() => setFlashOn((v) => !v)} />
       {/* header */}
       <div style={{ textAlign:"center", marginBottom:18 }}>
@@ -864,17 +887,17 @@ export default function DualMetronome() {
       {/* ── POLIMETRÍA (default/primary) ── */}
       {isMetrica && (
         <>
-          <div style={{ display:"flex", justifyContent:"center", marginBottom:20 }}>
+          <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
             <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} />
+          </div>
+          <div style={{ textAlign:"center", marginBottom:22 }}>
+            <DualSwitch on={dualOn} onToggle={toggleDual} />
           </div>
           <div style={{ marginBottom:20 }}>
             <PoliPanel
               bpmBase={relBpmBase} base={relBase} derivado={relDeriv}
               onBpmBase={handleRelBpmBase} onBase={handleRelBase} onDeriv={handleRelDeriv}
             />
-          </div>
-          <div style={{ textAlign:"center", marginBottom:20 }}>
-            <DualSwitch on={dualOn} onToggle={toggleDual} />
           </div>
           <div style={{ maxWidth:680, margin:"0 auto" }}>
             <ProgressivePractice onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} />
@@ -888,17 +911,17 @@ export default function DualMetronome() {
           <div style={{ maxWidth:880, margin:"0 auto 18px" }}>
             <PolyPresets onSelect={applyPolyPreset} active={activePolyPreset} />
           </div>
-          <div style={{ display:"flex", justifyContent:"center", marginBottom:22 }}>
+          <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
             <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} />
+          </div>
+          <div style={{ textAlign:"center", margin:"0 0 22px" }}>
+            <DualSwitch on={dualOn} onToggle={toggleDual} />
           </div>
           <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", maxWidth:880, margin:"0 auto" }}>
             <MetronomePanel color="A" state={metA} onChange={changeMetA} running={runningA} onToggle={toggleA} measures={measuresA} />
             <MetronomePanel color="B" state={metB} onChange={changeMetB} running={runningB} onToggle={toggleB} measures={measuresB} />
           </div>
-          <div style={{ textAlign:"center", margin:"22px 0" }}>
-            <DualSwitch on={dualOn} onToggle={toggleDual} />
-          </div>
-          <div style={{ maxWidth:880, margin:"0 auto 18px" }}>
+          <div style={{ maxWidth:880, margin:"22px auto 18px" }}>
             <ProgressivePractice onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} />
           </div>
           {/* presets */}
