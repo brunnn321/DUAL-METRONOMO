@@ -326,7 +326,7 @@ function Picker({ label, items, value, onChange, accent }) {
 }
 
 // ─── metronome panel ──────────────────────────────────────────────────────────
-function MetronomePanel({ color, state, onChange, running, onToggle, measures }) {
+function MetronomePanel({ color, state, onChange, onTiempoChange, running, onToggle, measures }) {
   const { bpm, volume, muted, subTick, strongSound, weakSound, subdivision } = state;
   const baseBpm = state.baseBpm ?? bpm;
   const tapRef = useRef([]);
@@ -418,8 +418,9 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures })
             {[["HALF TIME",0.5],["NORMAL",1],["DOUBLE TIME",2]].map(([lbl, mult]) => {
               const target = Math.round(baseBpm * mult);
               const on = Math.round(bpm) === target;
+              const handleTiempo = () => (onTiempoChange ?? onChange)({ bpm: Math.min(300, Math.max(30, target)) });
               return (
-                <button key={lbl} onClick={() => onChange({ bpm: Math.min(300, Math.max(30, target)) })} style={{
+                <button key={lbl} onClick={handleTiempo} style={{
                   flex:1, background: on ? accent : "#252830",
                   border:`1px solid ${on ? accent : "#3a3d47"}`,
                   borderRadius:4, color: on ? "#15171c" : "#666",
@@ -570,7 +571,7 @@ function BeatLights({ metA, metB, runningA, runningB, measuresA, measuresB, enab
     position:"fixed", left:0, right:0, [top ? "top" : "bottom"]:0, height:"50vh",
     pointerEvents:"none", zIndex:998,
     background: on ? color : "transparent",
-    transition: on ? "background-color 0.01s" : "background-color 0.18s ease-out",
+    transition:"none",
     display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:6,
   });
   const numStyle = (on, color, visible) => ({
@@ -578,13 +579,13 @@ function BeatLights({ metA, metB, runningA, runningB, measuresA, measuresB, enab
     fontSize:"min(20vw, 200px)",
     color: on ? "#15171c" : color,
     opacity: visible ? (on ? 0.92 : 0.22) : 0,
-    transition:"color 0.05s, opacity 0.15s",
+    transition:"none",
   });
   const subStyle = (on, color, visible) => ({
     fontFamily:"monospace", fontSize:18, letterSpacing:3, fontWeight:600,
     color: on ? "#15171c" : color,
     opacity: visible ? (on ? 0.8 : 0.28) : 0,
-    transition:"color 0.05s, opacity 0.15s",
+    transition:"none",
   });
 
   return (
@@ -630,6 +631,53 @@ function TapTempoButton({ onTap }) {
       color:"#ff6b4a", cursor:"pointer", transition:"all 0.1s",
       fontFamily:"monospace", fontSize:9, fontWeight:700, letterSpacing:0.5,
     }}>TAP</button>
+  );
+}
+
+// ─── sync volume + sound editor (DUAL SINC) ───────────────────────────────────
+function SyncControls({ metA, metB, onChangeA, onChangeB }) {
+  return (
+    <div style={{ maxWidth:680, margin:"0 auto 18px", background:"#1e2028", borderRadius:12, padding:"16px 20px", display:"flex", flexDirection:"column", gap:16 }}>
+      <div style={{ color:"#444", fontSize:9, fontFamily:"monospace", letterSpacing:2 }}>SONIDO Y VOLUMEN</div>
+
+      {/* volume row */}
+      <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
+        {[
+          { label:"BASE",     accent:"#ff6b4a", met:metA, onChange:onChangeA },
+          { label:"DERIVADO", accent:"#4ad9ff", met:metB, onChange:onChangeB },
+        ].map(({ label, accent, met, onChange }) => (
+          <div key={label} style={{ flex:1, minWidth:200 }}>
+            <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:6 }}>
+              <span style={{ color:accent }}>●</span> VOLUMEN {label}
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <button onClick={() => onChange({ muted: !met.muted })} style={{ background:"none", border:"none", cursor:"pointer", color: met.muted ? "#333" : accent, padding:2 }}>
+                {met.muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+              </button>
+              <input type="range" min={0} max={1} step={0.01} value={met.volume}
+                onChange={(e) => onChange({ volume: parseFloat(e.target.value) })}
+                style={{ flex:1, accentColor:accent }} disabled={met.muted} />
+              <span style={{ color:"#444", fontSize:9, fontFamily:"monospace", width:26, textAlign:"right" }}>{Math.round(met.volume * 100)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* sound pickers row */}
+      <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
+        {[
+          { label:"BASE",     accent:"#ff6b4a", met:metA, onChange:onChangeA },
+          { label:"DERIVADO", accent:"#4ad9ff", met:metB, onChange:onChangeB },
+        ].map(({ label, accent, met, onChange }) => (
+          <div key={label} style={{ flex:1, minWidth:200, display:"flex", flexDirection:"column", gap:8 }}>
+            <Picker label={`${label} – FUERTE (beat 1)`} items={SOUNDS} value={met.strongSound}
+              onChange={(v) => onChange({ strongSound: v })} accent={accent} />
+            <Picker label={`${label} – DÉBIL`} items={SOUNDS} value={met.weakSound}
+              onChange={(v) => onChange({ weakSound: v })} accent={accent} />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -704,8 +752,8 @@ export default function DualMetronome() {
         const t       = nextRef.current;
         if (!muted) {
           if (isAcc)       synthClick(ctx, t, strongSound, volume);
-          else if (isMain) synthClick(ctx, t, weakSound,   volume * 0.55);
-          else             synthClick(ctx, t, weakSound,   volume * 0.15);
+          else if (isMain) synthClick(ctx, t, weakSound,   volume);
+          else             synthClick(ctx, t, weakSound,   volume);
         }
         if (isAcc) {
           const bar   = Math.floor(tick / (subdivision * total)) + 1;
@@ -781,8 +829,9 @@ export default function DualMetronome() {
     scheduleBeats(); schedRef.current = setInterval(scheduleBeats, 25);
   }, [scheduleBeats]);
 
-  // ── individual toggles ─────────────────────────────────────────────────────
+  // ── individual toggles (DUAL LIBRE only) ──────────────────────────────────
   const toggleA = () => {
+    if (modeRef.current !== "libre") return;
     if (runARef.current) {
       runARef.current = false; setRunningA(false); setDualOn(false); setMetA((p) => ({ ...p, beat:-1 }));
       if (!runBRef.current) { clearInterval(schedRef.current); schedRef.current = null; ctxRef.current?.close(); ctxRef.current = null; }
@@ -794,6 +843,7 @@ export default function DualMetronome() {
     }
   };
   const toggleB = () => {
+    if (modeRef.current !== "libre") return;
     if (runBRef.current) {
       runBRef.current = false; setRunningB(false); setDualOn(false); setMetB((p) => ({ ...p, beat:-1 }));
       if (!runARef.current) { clearInterval(schedRef.current); schedRef.current = null; ctxRef.current?.close(); ctxRef.current = null; }
@@ -863,6 +913,16 @@ export default function DualMetronome() {
     setMetB((p) => ({ ...p, ...patch }));
     if (runBRef.current && Object.keys(patch).some((k) => NEEDS_RESTART.has(k))) restartNow();
   }, [restartNow]);
+
+  // ── tiempo change (no restart — keeps playback position) ──────────────────
+  const tiempoChangeA = useCallback((patch) => {
+    metARef.current = { ...metARef.current, ...patch };
+    setMetA((p) => ({ ...p, ...patch }));
+  }, []);
+  const tiempoChangeB = useCallback((patch) => {
+    metBRef.current = { ...metBRef.current, ...patch };
+    setMetB((p) => ({ ...p, ...patch }));
+  }, []);
 
   // ── mode switch ────────────────────────────────────────────────────────────
   const handleModeChange = useCallback((newMode) => {
@@ -957,6 +1017,7 @@ export default function DualMetronome() {
               onBpmBase={handleRelBpmBase} onBase={handleRelBase} onDeriv={handleRelDeriv}
             />
           </div>
+          <SyncControls metA={metA} metB={metB} onChangeA={changeMetA} onChangeB={changeMetB} />
           <div style={{ maxWidth:680, margin:"0 auto 90px" }}>
             <ProgressivePractice onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} />
           </div>
@@ -967,8 +1028,8 @@ export default function DualMetronome() {
       {!isMetrica && (
         <>
           <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", maxWidth:880, margin:"0 auto" }}>
-            <MetronomePanel color="A" state={metA} onChange={changeMetA} running={runningA} onToggle={toggleA} measures={measuresA} />
-            <MetronomePanel color="B" state={metB} onChange={changeMetB} running={runningB} onToggle={toggleB} measures={measuresB} />
+            <MetronomePanel color="A" state={metA} onChange={changeMetA} onTiempoChange={tiempoChangeA} running={runningA} onToggle={toggleA} measures={measuresA} />
+            <MetronomePanel color="B" state={metB} onChange={changeMetB} onTiempoChange={tiempoChangeB} running={runningB} onToggle={toggleB} measures={measuresB} />
           </div>
           <div style={{ maxWidth:880, margin:"22px auto 18px" }}>
             <ProgressivePractice onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} />
