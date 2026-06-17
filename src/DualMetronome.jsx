@@ -717,8 +717,9 @@ export default function DualMetronome() {
   const [flashOn, setFlashOn] = useState(true);
 
   // audio refs — the scheduler reads exclusively from these, never from state
-  const ctxRef   = useRef(null);
-  const schedRef = useRef(null);
+  const ctxRef     = useRef(null);
+  const schedRef   = useRef(null);
+  const sessionRef = useRef(0); // incremented on every hardStop — invalidates pending setTimeouts
   const runARef  = useRef(false);
   const runBRef  = useRef(false);
   const nextARef = useRef(0);
@@ -740,6 +741,7 @@ export default function DualMetronome() {
 
     const sched = (runRef, metRef, nextRef, tickRef, setMeasures, setMet) => {
       if (!runRef.current) return;
+      const sid = sessionRef.current; // snapshot — callbacks discard themselves if session changed
       const { bpm, timeSig, volume, muted, strongSound, weakSound, subdivision } = metRef.current;
       const total  = beatsPerMeasure(timeSig);
       const subInt = (60 / bpm) / subdivision;
@@ -758,14 +760,15 @@ export default function DualMetronome() {
         if (isAcc) {
           const bar   = Math.floor(tick / (subdivision * total)) + 1;
           const delay = Math.max(0, (t - ctx.currentTime) * 1000);
-          setTimeout(() => setMeasures(bar), delay);
+          setTimeout(() => { if (sessionRef.current !== sid) return; setMeasures(bar); }, delay);
         }
         if (isMain) {
           const cb    = beatIdx;
           const delay = Math.max(0, (t - ctx.currentTime) * 1000);
           setTimeout(() => {
+            if (sessionRef.current !== sid) return;
             setMet((p) => ({ ...p, beat: cb, lastBeat: cb }));
-            setTimeout(() => setMet((p) => ({ ...p, beat: -1 })), 75);
+            setTimeout(() => { if (sessionRef.current !== sid) return; setMet((p) => ({ ...p, beat: -1 })); }, 75);
           }, delay);
         }
         // subTick fires on every subdivision tick (used by the FIGURAS dot
@@ -774,8 +777,9 @@ export default function DualMetronome() {
           const sb    = subIdx;
           const delay = Math.max(0, (t - ctx.currentTime) * 1000);
           setTimeout(() => {
+            if (sessionRef.current !== sid) return;
             setMet((p) => ({ ...p, subTick: sb }));
-            setTimeout(() => setMet((p) => ({ ...p, subTick: -1 })), 60);
+            setTimeout(() => { if (sessionRef.current !== sid) return; setMet((p) => ({ ...p, subTick: -1 })); }, 60);
           }, delay);
         }
         nextRef.current += subInt;
@@ -791,6 +795,7 @@ export default function DualMetronome() {
   // Immediately stops the current scheduler and restarts it from beat 0,
   // guaranteeing that both metronomes are in sync with no phase drift.
   const restartNow = useCallback(() => {
+    sessionRef.current++;
     const wasA = runARef.current, wasB = runBRef.current;
     clearInterval(schedRef.current); schedRef.current = null;
     ctxRef.current?.close(); ctxRef.current = null;
@@ -811,6 +816,7 @@ export default function DualMetronome() {
     return ctxRef.current;
   };
   const hardStop = useCallback(() => {
+    sessionRef.current++;
     runARef.current = false; runBRef.current = false;
     clearInterval(schedRef.current); schedRef.current = null;
     ctxRef.current?.close(); ctxRef.current = null;
