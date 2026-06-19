@@ -87,8 +87,8 @@ function synthClick(ctx, time, soundKey, volume, pan = 0) {
 // ─── mode selector ────────────────────────────────────────────────────────────
 function ModeSelector({ mode, setMode }) {
   return (
-    <div style={{ display:"flex", background:"#1a1c22", borderRadius:8, padding:3, maxWidth:340, margin:"0 auto", gap:2 }}>
-      {[["metrica","DUAL SINC","#a78bfa"],["libre","DUAL LIBRE","#ffd04a"]].map(([k, lbl, color]) => {
+    <div style={{ display:"flex", background:"#1a1c22", borderRadius:8, padding:3, maxWidth:520, margin:"0 auto", gap:2 }}>
+      {[["metrica","DUAL SINC","#a78bfa"],["libre","DUAL LIBRE","#ffd04a"],["polimetria","POLIMETRÍA","#4aff9a"]].map(([k, lbl, color]) => {
         const on = mode === k;
         return (
           <button key={k} onClick={() => setMode(k)} style={{
@@ -686,6 +686,76 @@ function SyncControls({ metA, metB, onChangeA, onChangeB }) {
   );
 }
 
+// ─── polimetría panel ─────────────────────────────────────────────────────────
+function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB }) {
+  const lcmAB = lcm(beatsA, beatsB);
+  return (
+    <div style={{ background:"#1e2028", borderRadius:12, padding:"20px 24px", maxWidth:680, margin:"0 auto", display:"flex", flexDirection:"column", gap:18 }}>
+      {/* BPM compartido */}
+      <div>
+        <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:2, marginBottom:8 }}>BPM</div>
+        <div style={{ display:"flex", alignItems:"center", gap:16 }}>
+          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:52, fontWeight:700, color:"#4aff9a", lineHeight:1, minWidth:96 }}>{bpm}</div>
+          <div style={{ flex:1, display:"flex", flexDirection:"column", gap:6 }}>
+            <input type="range" min={30} max={300} value={bpm} onChange={(e) => onBpm(parseInt(e.target.value))} style={{ width:"100%", accentColor:"#4aff9a" }} />
+            <div style={{ display:"flex", gap:5 }}>
+              {[-10,-1,+1,+10].map((d) => (
+                <button key={d} onClick={() => onBpm(Math.min(300, Math.max(30, bpm + d)))} style={{ background:"#252830", border:"1px solid #4aff9a33", borderRadius:5, color:"#4aff9a", fontFamily:"monospace", fontSize:11, padding:"4px 9px", cursor:"pointer" }}>{d > 0 ? `+${d}` : d}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* selectores de tiempos */}
+      <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
+        {[
+          { label:"TIEMPOS A", color:"#ff6b4a", val:beatsA, set:onBeatsA },
+          { label:"TIEMPOS B", color:"#4ad9ff", val:beatsB, set:onBeatsB },
+        ].map(({ label, color, val, set }) => (
+          <div key={label} style={{ flex:1, minWidth:200 }}>
+            <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:8 }}>
+              <span style={{ color }}>●</span> {label} <span style={{ color:"#333" }}>· por compás</span>
+            </div>
+            <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+              {[2,3,4,5,6,7,8,9].map((n) => (
+                <button key={n} onClick={() => set(n)} style={{
+                  background: val===n ? color : "#252830",
+                  border:`1px solid ${val===n ? color : "#3a3d47"}`,
+                  borderRadius:6, color: val===n ? "#15171c" : "#666",
+                  fontFamily:"'JetBrains Mono',monospace", fontSize:15, fontWeight: val===n ? 700 : 400,
+                  padding:"6px 13px", cursor:"pointer", minWidth:38, textAlign:"center",
+                }}>{n}</button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* info MCM */}
+      <div style={{ background:"#15171c", borderRadius:8, padding:"14px 18px", border:"1px solid #252830", display:"flex", gap:32, flexWrap:"wrap" }}>
+        <div>
+          <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>RELACIÓN</div>
+          <div style={{ color:"#eee", fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, marginTop:3 }}>{beatsA}:{beatsB}</div>
+        </div>
+        <div>
+          <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>MCM</div>
+          <div style={{ color:"#4aff9a", fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, marginTop:3 }}>{lcmAB}</div>
+        </div>
+        <div style={{ flex:1 }}>
+          <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1, marginBottom:4 }}>COINCIDENCIA</div>
+          <div style={{ color:"#666", fontFamily:"monospace", fontSize:12, lineHeight:1.8 }}>
+            Los <span style={{ color:"#eee" }}>tiempo&nbsp;1</span> coinciden cada{" "}
+            <span style={{ color:"#4aff9a", fontWeight:700 }}>{lcmAB}</span> pulsos —{" "}
+            A completa <span style={{ color:"#ff6b4a", fontWeight:700 }}>{lcmAB / beatsA}</span> ciclos,{" "}
+            B completa <span style={{ color:"#4ad9ff", fontWeight:700 }}>{lcmAB / beatsB}</span> ciclos
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function loadPresets() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]"); } catch { return []; } }
 function savePresets(p) { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); }
@@ -705,6 +775,14 @@ export default function DualMetronome() {
   const [relBpmBase, setRelBpmBase] = useState(90);
   const relBaseRef  = useRef(4);
   const relDerivRef = useRef(5);
+
+  // polimetría (tercer modo) params
+  const [polyBpm,    setPolyBpm]    = useState(90);
+  const [polyBeatsA, setPolyBeatsA] = useState(4);
+  const [polyBeatsB, setPolyBeatsB] = useState(3);
+  const polyBpmRef    = useRef(90);
+  const polyBeatsARef = useRef(4);
+  const polyBeatsBRef = useRef(3);
 
   // shared audio state
   const [runningA, setRunningA] = useState(false);
@@ -913,6 +991,31 @@ export default function DualMetronome() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applyPoliParams, relBpmBase]);
 
+  // ── polimetría handlers ────────────────────────────────────────────────────
+  const applyPolyParams = useCallback((bpm, beatsA, beatsB) => {
+    polyBpmRef.current = bpm; polyBeatsARef.current = beatsA; polyBeatsBRef.current = beatsB;
+    metARef.current = { ...metARef.current, bpm, timeSig: `${beatsA}/4` };
+    metBRef.current = { ...metBRef.current, bpm, timeSig: `${beatsB}/4` };
+    setMetA((p) => ({ ...p, bpm, timeSig: `${beatsA}/4` }));
+    setMetB((p) => ({ ...p, bpm, timeSig: `${beatsB}/4` }));
+    restartNow();
+  }, [restartNow]);
+
+  const handlePolyBpm = useCallback((v) => {
+    setPolyBpm(v);
+    applyPolyParams(v, polyBeatsARef.current, polyBeatsBRef.current);
+  }, [applyPolyParams]);
+
+  const handlePolyBeatsA = useCallback((v) => {
+    setPolyBeatsA(v); polyBeatsARef.current = v;
+    applyPolyParams(polyBpmRef.current, v, polyBeatsBRef.current);
+  }, [applyPolyParams]);
+
+  const handlePolyBeatsB = useCallback((v) => {
+    setPolyBeatsB(v); polyBeatsBRef.current = v;
+    applyPolyParams(polyBpmRef.current, polyBeatsARef.current, v);
+  }, [applyPolyParams]);
+
   // ── dual libre param handlers ──────────────────────────────────────────────
   // Restart only for params that affect timing (bpm, timeSig, subdivision).
   // Sound/volume/mute changes are picked up by the scheduler on the next tick.
@@ -948,6 +1051,12 @@ export default function DualMetronome() {
       metBRef.current = { ...metBRef.current, bpm: bpmB,       timeSig: `${relDerivRef.current}/4` };
       setMetA((p) => ({ ...p, bpm: relBpmBase, timeSig: `${relBaseRef.current}/4` }));
       setMetB((p) => ({ ...p, bpm: bpmB,       timeSig: `${relDerivRef.current}/4` }));
+    } else if (newMode === "polimetria") {
+      const bpm = polyBpmRef.current;
+      metARef.current = { ...metARef.current, bpm, timeSig: `${polyBeatsARef.current}/4` };
+      metBRef.current = { ...metBRef.current, bpm, timeSig: `${polyBeatsBRef.current}/4` };
+      setMetA((p) => ({ ...p, bpm, timeSig: `${polyBeatsARef.current}/4` }));
+      setMetB((p) => ({ ...p, bpm, timeSig: `${polyBeatsBRef.current}/4` }));
     } else {
       // Dual Libre has no "compás" concept anymore — fix timeSig to a single
       // beat per measure so the shared circular visualizer stays consistent.
@@ -964,6 +1073,9 @@ export default function DualMetronome() {
     if (modeRef.current === "metrica") {
       setRelBpmBase(bpm);
       applyPoliParams(bpm, relBaseRef.current, relDerivRef.current);
+    } else if (modeRef.current === "polimetria") {
+      setPolyBpm(bpm); polyBpmRef.current = bpm;
+      applyPolyParams(bpm, polyBeatsARef.current, polyBeatsBRef.current);
     } else {
       metARef.current = { ...metARef.current, bpm };
       metBRef.current = { ...metBRef.current, bpm };
@@ -971,7 +1083,21 @@ export default function DualMetronome() {
       setMetB((p) => ({ ...p, bpm }));
       restartNow();
     }
-  }, [applyPoliParams, restartNow]);
+  }, [applyPoliParams, applyPolyParams, restartNow]);
+
+  // ── polimetría tap tempo ───────────────────────────────────────────────────
+  const tapRefPoly = useRef([]);
+  const handlePolyTap = useCallback(() => {
+    const now = performance.now();
+    const taps = tapRefPoly.current;
+    taps.push(now); if (taps.length > 6) taps.shift();
+    if (taps.length >= 2) {
+      const ints = []; for (let i = 1; i < taps.length; i++) ints.push(taps[i] - taps[i-1]);
+      const avg = ints.reduce((a, b) => a + b, 0) / ints.length;
+      const v = Math.round(60000 / avg);
+      if (v >= 30 && v <= 300) handlePolyBpm(v);
+    }
+  }, [handlePolyBpm]);
 
   const handlePracticeActivate = useCallback(() => {
     if (!runARef.current || !runBRef.current) startDual();
@@ -993,8 +1119,9 @@ export default function DualMetronome() {
   const deletePreset = (id) => { const u = presets.filter((p) => p.id !== id); setPresets(u); savePresets(u); };
 
   // ── render ─────────────────────────────────────────────────────────────────
-  const isMetrica = mode === "metrica";
-  const centerLabel = isMetrica ? `${relDeriv}:${relBase}` : undefined;
+  const isMetrica    = mode === "metrica";
+  const isPolimetria = mode === "polimetria";
+  const centerLabel  = isMetrica ? `${relDeriv}:${relBase}` : isPolimetria ? `${polyBeatsA}:${polyBeatsB}` : undefined;
   // full-screen color/performance view only while something is actually playing
   const performanceMode = flashOn && (runningA || runningB);
 
@@ -1002,7 +1129,7 @@ export default function DualMetronome() {
     <div style={{ minHeight:"100vh", background:"#15171c", color:"#ddd", fontFamily:"system-ui,sans-serif", padding: performanceMode ? 0 : "24px 16px", boxSizing:"border-box" }}>
       <BeatLights metA={metA} metB={metB} runningA={runningA} runningB={runningB} measuresA={measuresA} measuresB={measuresB} enabled={performanceMode} />
       <FlashToggle on={flashOn} onToggle={() => setFlashOn((v) => !v)} />
-      {isMetrica && <TapTempoButton onTap={handleGlobalTap} />}
+      {(isMetrica || isPolimetria) && <TapTempoButton onTap={isMetrica ? handleGlobalTap : handlePolyTap} />}
       <DualSwitch on={dualOn} onToggle={toggleDual} />
 
       {!performanceMode && (
@@ -1019,7 +1146,7 @@ export default function DualMetronome() {
         <ModeSelector mode={mode} setMode={handleModeChange} />
       </div>
 
-      {/* ── POLIMETRÍA (default/primary) ── */}
+      {/* ── DUAL SINC (polirritmia) ── */}
       {isMetrica && (
         <>
           <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
@@ -1038,8 +1165,26 @@ export default function DualMetronome() {
         </>
       )}
 
-      {/* ── DUAL LIBRE (secondary) ── */}
-      {!isMetrica && (
+      {/* ── POLIMETRÍA (tercer modo) ── */}
+      {isPolimetria && (
+        <>
+          <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
+            <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} />
+          </div>
+          <div style={{ marginBottom:20 }}>
+            <PolyMetriaPanel
+              bpm={polyBpm} beatsA={polyBeatsA} beatsB={polyBeatsB}
+              onBpm={handlePolyBpm} onBeatsA={handlePolyBeatsA} onBeatsB={handlePolyBeatsB}
+            />
+          </div>
+          <div style={{ maxWidth:680, margin:"0 auto 90px" }}>
+            <ProgressivePractice onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} />
+          </div>
+        </>
+      )}
+
+      {/* ── DUAL LIBRE ── */}
+      {mode === "libre" && (
         <>
           <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", maxWidth:880, margin:"0 auto" }}>
             <MetronomePanel color="A" state={metA} onChange={changeMetA} onTiempoChange={tiempoChangeA} running={runningA} onToggle={toggleA} measures={measuresA} />
