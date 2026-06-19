@@ -53,8 +53,13 @@ const STORAGE_KEY = "dual-metronomo-v3";
 const NEEDS_RESTART = new Set(["bpm", "timeSig", "subdivision"]);
 
 // ─── audio ────────────────────────────────────────────────────────────────────
-function synthClick(ctx, time, soundKey, volume) {
+// pan: -1 = full left, 0 = center, +1 = full right
+function synthClick(ctx, time, soundKey, volume, pan = 0) {
   if (volume < 0.001) return;
+  const panner = ctx.createStereoPanner();
+  panner.pan.setValueAtTime(pan, time);
+  panner.connect(ctx.destination);
+
   if (soundKey === "hat") {
     const len = Math.floor(ctx.sampleRate * 0.045);
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -63,7 +68,7 @@ function synthClick(ctx, time, soundKey, volume) {
     const src = ctx.createBufferSource(); src.buffer = buf;
     const f = ctx.createBiquadFilter(); f.type = "highpass"; f.frequency.value = 6000;
     const g = ctx.createGain();
-    src.connect(f); f.connect(g); g.connect(ctx.destination);
+    src.connect(f); f.connect(g); g.connect(panner);
     g.gain.setValueAtTime(volume * 0.7, time);
     g.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
     src.start(time); return;
@@ -71,7 +76,7 @@ function synthClick(ctx, time, soundKey, volume) {
   const C = { click:["square",900,.065], beep:["sine",660,.14], wood:["sine",280,.055], clave:["sine",1500,.042], rim:["triangle",420,.038] };
   const [type, freq, decay] = C[soundKey] ?? C.click;
   const osc = ctx.createOscillator(); const g = ctx.createGain();
-  osc.connect(g); g.connect(ctx.destination);
+  osc.connect(g); g.connect(panner);
   osc.type = type; osc.frequency.setValueAtTime(freq, time);
   g.gain.setValueAtTime(0, time);
   g.gain.linearRampToValueAtTime(volume * 0.85, time + 0.004);
@@ -739,10 +744,13 @@ export default function DualMetronome() {
     if (!ctx || ctx.state === "closed") return;
     const ahead = ctx.currentTime + 0.1;
 
-    const sched = (runRef, metRef, nextRef, tickRef, setMeasures, setMet) => {
+    const sched = (runRef, otherRef, metRef, nextRef, tickRef, setMeasures, setMet, fixedPan) => {
       if (!runRef.current) return;
       const sid = sessionRef.current; // snapshot — callbacks discard themselves if session changed
       const { bpm, timeSig, volume, muted, strongSound, weakSound, subdivision } = metRef.current;
+      // center if the other metronome is muted or not running
+      const otherSilent = !otherRef.current || otherRef.current.muted;
+      const pan = otherSilent ? 0 : fixedPan;
       const total  = beatsPerMeasure(timeSig);
       const subInt = (60 / bpm) / subdivision;
       while (nextRef.current < ahead) {
@@ -753,9 +761,9 @@ export default function DualMetronome() {
         const isAcc   = isMain && beatIdx === 0;
         const t       = nextRef.current;
         if (!muted) {
-          if (isAcc)       synthClick(ctx, t, strongSound, volume);
-          else if (isMain) synthClick(ctx, t, weakSound,   volume);
-          else             synthClick(ctx, t, weakSound,   volume);
+          if (isAcc)       synthClick(ctx, t, strongSound, volume, pan);
+          else if (isMain) synthClick(ctx, t, weakSound,   volume, pan);
+          else             synthClick(ctx, t, weakSound,   volume, pan);
         }
         if (isAcc) {
           const bar   = Math.floor(tick / (subdivision * total)) + 1;
@@ -786,8 +794,8 @@ export default function DualMetronome() {
         tickRef.current++;
       }
     };
-    sched(runARef, metARef, nextARef, tickARef, setMeasuresA, setMetA);
-    sched(runBRef, metBRef, nextBRef, tickBRef, setMeasuresB, setMetB);
+    sched(runARef, metBRef, metARef, nextARef, tickARef, setMeasuresA, setMetA, -1);
+    sched(runBRef, metARef, metBRef, nextBRef, tickBRef, setMeasuresB, setMetB, +1);
   }, []);
 
   // ── restartNow ─────────────────────────────────────────────────────────────
