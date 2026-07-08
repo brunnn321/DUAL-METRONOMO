@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Play, Square, Volume2, VolumeX, Save, Trash2, ChevronRight, Lightbulb } from "lucide-react";
+import { Play, Square, Volume2, VolumeX, ChevronRight, Lightbulb } from "lucide-react";
 
 // ─── math ─────────────────────────────────────────────────────────────────────
 const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
@@ -48,7 +48,6 @@ const POLY_NAMES = {
 const getPolyInfo = (a, b) =>
   POLY_NAMES[`${a}:${b}`] ?? POLY_NAMES[`${b}:${a}`] ?? { name:"Relación personalizada", cat:"Polirritmia" };
 
-const STORAGE_KEY = "dual-metronomo-v3";
 // params that require a scheduler restart to stay in sync
 const NEEDS_RESTART = new Set(["bpm", "timeSig", "subdivision"]);
 
@@ -107,7 +106,7 @@ function ModeSelector({ mode, setMode }) {
 }
 
 // ─── circular visualizer ──────────────────────────────────────────────────────
-function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showSubtitle }) {
+function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showSubtitle, showMcm = true }) {
   const [coincide, setCoincide] = useState(false);
   const tRef = useRef(null);
   const totalA = beatsPerMeasure(metA.timeSig);
@@ -175,9 +174,11 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
             fill={coincide ? "#fff" : "#ddd"} fontSize={30}
             fontFamily="'JetBrains Mono',monospace" fontWeight="800"
             style={{ transition:"fill 0.2s", filter: coincide ? "drop-shadow(0 0 10px #fff)" : "none" }}>{label}</text>
-          <text x={cx} y={cy+13} textAnchor="middle" fill="#999" fontSize={11} fontFamily="monospace" fontWeight="600">
-            MCM = {lcmAB}
-          </text>
+          {showMcm && (
+            <text x={cx} y={cy+13} textAnchor="middle" fill="#999" fontSize={11} fontFamily="monospace" fontWeight="600">
+              MCM = {lcmAB}
+            </text>
+          )}
         </svg>
       </div>
       {showSubtitle !== false && (
@@ -197,8 +198,6 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
   const ratio  = `${derivado}:${base}`;
   const bpmB   = bpmBase * derivado / base;
   const poly   = getPolyInfo(derivado, base);
-  const lcmAB  = lcm(base, derivado);
-  const ciclos = lcmAB / base;
   const fmtBpm = (v) => Number.isInteger(v) ? v : v.toFixed(2);
 
   return (
@@ -293,14 +292,6 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
         <div>
           <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>CATEGORÍA</div>
           <div style={{ color:"#777", fontFamily:"monospace", fontSize:13, marginTop:3 }}>{poly.cat}</div>
-        </div>
-        <div style={{ gridColumn:"1 / -1", borderTop:"1px solid #1e2028", paddingTop:12 }}>
-          <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1, marginBottom:4 }}>COINCIDENCIA</div>
-          <div style={{ color:"#666", fontFamily:"monospace", fontSize:12, lineHeight:1.8 }}>
-            Coinciden cada <span style={{ color:"#ddd", fontWeight:700 }}>{lcmAB}</span> subdivisiones
-            <span style={{ margin:"0 10px", color:"#333" }}>·</span>
-            Ciclo completo cada <span style={{ color:"#ddd", fontWeight:700 }}>{ciclos}</span> ciclos base
-          </div>
         </div>
       </div>
     </div>
@@ -562,6 +553,85 @@ function ProgressivePractice({ onBpmChange, onActivate, running }) {
   );
 }
 
+// ─── practice timer (pomodoro-style countdown, stops metronome at 0) ─────────
+const TIMER_MINUTES = [5, 10, 15, 20, 30, 45, 60];
+
+function playAlarm() {
+  const ctx = new AudioContext();
+  [880, 1100, 1320].forEach((freq, i) => {
+    const t = ctx.currentTime + i * 0.3;
+    const osc = ctx.createOscillator(); const g = ctx.createGain();
+    osc.connect(g); g.connect(ctx.destination);
+    osc.type = "sine"; osc.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.5, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    osc.start(t); osc.stop(t + 0.3);
+  });
+  setTimeout(() => ctx.close(), 1400);
+}
+
+function PracticeTimer({ onFinish }) {
+  const [minutes, setMinutes] = useState(15);
+  const [on, setOn]           = useState(false);
+  const [done, setDone]       = useState(false);
+  const [timeLeft, setTimeLeft] = useState(15 * 60);
+  const timerRef  = useRef(null);
+  const onFinishRef = useRef(onFinish);
+  useEffect(() => { onFinishRef.current = onFinish; }, [onFinish]);
+
+  const fmt = (s) => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+
+  const start = () => { setTimeLeft(minutes * 60); setDone(false); setOn(true); };
+  const stop  = () => { setOn(false); clearInterval(timerRef.current); };
+
+  useEffect(() => {
+    if (!on) { clearInterval(timerRef.current); return; }
+    timerRef.current = setInterval(() => {
+      setTimeLeft((t) => {
+        if (t > 1) return t - 1;
+        setOn(false); setDone(true);
+        playAlarm(); onFinishRef.current();
+        return 0;
+      });
+    }, 1000);
+    return () => clearInterval(timerRef.current);
+  }, [on]);
+
+  const pick = (m) => { setMinutes(m); if (!on) { setTimeLeft(m * 60); setDone(false); } };
+
+  return (
+    <div style={{ background:"#1e2028", borderRadius:12, padding:20, border:`1px solid ${on ? "#ffd04a44" : "#252830"}`, transition:"border-color 0.3s" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+        <div style={{ color:"#555", fontSize:10, fontFamily:"monospace", letterSpacing:2 }}>TIMER</div>
+        <button onClick={on ? stop : start} style={{ background: on ? "#3d2a0d" : "#252830", border:`1px solid ${on ? "#ffd04a" : "#3a3d47"}`, borderRadius:6, color: on ? "#ffd04a" : "#666", fontFamily:"monospace", fontSize:11, fontWeight:600, padding:"5px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+          {on ? <Square size={11} /> : <Play size={11} />}{on ? "DETENER" : "INICIAR"}
+        </button>
+      </div>
+      <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+        <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:38, fontWeight:700, lineHeight:1, minWidth:120,
+          color: done ? "#4aff7a" : on && timeLeft <= 10 ? "#ff6b4a" : "#ffd04a", transition:"color 0.3s" }}>
+          {done ? "¡LISTO!" : fmt(timeLeft)}
+        </div>
+        <div style={{ display:"flex", gap:5, flexWrap:"wrap", flex:1 }}>
+          {TIMER_MINUTES.map((m) => (
+            <button key={m} onClick={() => pick(m)} disabled={on} style={{
+              background: minutes === m ? "#ffd04a" : "#252830",
+              border:`1px solid ${minutes === m ? "#ffd04a" : "#3a3d47"}`,
+              borderRadius:5, color: minutes === m ? "#15171c" : on ? "#444" : "#777",
+              fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight: minutes === m ? 700 : 400,
+              padding:"5px 10px", cursor: on ? "default" : "pointer", minWidth:34,
+            }}>{m}</button>
+          ))}
+          <input type="number" min={1} max={180} value={minutes} disabled={on}
+            onChange={(e) => pick(Math.min(180, Math.max(1, parseInt(e.target.value) || 1)))}
+            style={{ background:"#252830", border:"1px solid #3a3d47", borderRadius:5, color: on ? "#555" : "#ddd", fontFamily:"monospace", fontSize:12, padding:"4px 8px", width:52, outline:"none" }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── beat lights (split-screen, A on top half / B on bottom half) ────────────
 function BeatLights({ metA, metB, runningA, runningB, measuresA, measuresB, enabled }) {
   if (!enabled) return null;
@@ -757,9 +827,6 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB }) {
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
-function loadPresets() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]"); } catch { return []; } }
-function savePresets(p) { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); }
-
 const DEFAULT_A = { bpm:120, baseBpm:120, timeSig:"4/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, subTick:-1, strongSound:"click", weakSound:"beep",  subdivision:1 };
 const DEFAULT_B = { bpm:90,  baseBpm:90,  timeSig:"3/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, subTick:-1, strongSound:"click", weakSound:"wood",  subdivision:1 };
 
@@ -795,8 +862,6 @@ export default function DualMetronome() {
   const [metB, setMetB] = useState(() => ({ ...DEFAULT_B, bpm:112.5, baseBpm:112.5, timeSig:"5/4" }));
   const [measuresA, setMeasuresA] = useState(0);
   const [measuresB, setMeasuresB] = useState(0);
-  const [presets,    setPresets]   = useState(loadPresets);
-  const [presetName, setPresetName] = useState("");
   const [flashOn, setFlashOn] = useState(true);
 
   // audio refs — the scheduler reads exclusively from these, never from state
@@ -947,6 +1012,21 @@ export default function DualMetronome() {
     }
   };
   const toggleDual = () => { if (dualOn) { hardStop(); } else { hardStop(); startDual(); } };
+
+  // ── keyboard shortcuts: Space / Enter = INICIAR/DETENER ────────────────────
+  const toggleDualRef = useRef(toggleDual);
+  useEffect(() => { toggleDualRef.current = toggleDual; });
+  useEffect(() => {
+    const h = (e) => {
+      if (e.code !== "Space" && e.code !== "Enter" && e.code !== "NumpadEnter") return;
+      const t = e.target.tagName;
+      if (t === "INPUT" || t === "SELECT" || t === "TEXTAREA") return;
+      e.preventDefault();
+      toggleDualRef.current();
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
 
   // ── polimetría param handlers ──────────────────────────────────────────────
   // Update both refs and state, then restart so there is zero phase drift.
@@ -1103,21 +1183,6 @@ export default function DualMetronome() {
     if (!runARef.current || !runBRef.current) startDual();
   }, [startDual]);
 
-  // ── presets ────────────────────────────────────────────────────────────────
-  const savePreset = () => {
-    const name  = presetName.trim() || `Preset ${presets.length + 1}`;
-    const entry = { id:Date.now(), name,
-      a:{ bpm:metA.bpm, baseBpm:metA.baseBpm ?? metA.bpm, timeSig:metA.timeSig, strongSound:metA.strongSound, weakSound:metA.weakSound },
-      b:{ bpm:metB.bpm, baseBpm:metB.baseBpm ?? metB.bpm, timeSig:metB.timeSig, strongSound:metB.strongSound, weakSound:metB.weakSound },
-    };
-    const u = [...presets, entry]; setPresets(u); savePresets(u); setPresetName("");
-  };
-  const loadPreset = (p) => {
-    changeMetA({ ...p.a, baseBpm:p.a.baseBpm ?? p.a.bpm, strongSound:p.a.strongSound??"click", weakSound:p.a.weakSound??"beep" });
-    changeMetB({ ...p.b, baseBpm:p.b.baseBpm ?? p.b.bpm, strongSound:p.b.strongSound??"click", weakSound:p.b.weakSound??"wood" });
-  };
-  const deletePreset = (id) => { const u = presets.filter((p) => p.id !== id); setPresets(u); savePresets(u); };
-
   // ── render ─────────────────────────────────────────────────────────────────
   const isMetrica    = mode === "metrica";
   const isPolimetria = mode === "polimetria";
@@ -1150,7 +1215,7 @@ export default function DualMetronome() {
       {isMetrica && (
         <>
           <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
-            <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} />
+            <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={false} />
           </div>
           <div style={{ marginBottom:20 }}>
             <PoliPanel
@@ -1159,8 +1224,9 @@ export default function DualMetronome() {
             />
           </div>
           <SyncControls metA={metA} metB={metB} onChangeA={changeMetA} onChangeB={changeMetB} />
-          <div style={{ maxWidth:680, margin:"0 auto 90px" }}>
+          <div style={{ maxWidth:680, margin:"0 auto 90px", display:"flex", flexDirection:"column", gap:18 }}>
             <ProgressivePractice onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} />
+            <PracticeTimer onFinish={hardStop} />
           </div>
         </>
       )}
@@ -1177,8 +1243,9 @@ export default function DualMetronome() {
               onBpm={handlePolyBpm} onBeatsA={handlePolyBeatsA} onBeatsB={handlePolyBeatsB}
             />
           </div>
-          <div style={{ maxWidth:680, margin:"0 auto 90px" }}>
+          <div style={{ maxWidth:680, margin:"0 auto 90px", display:"flex", flexDirection:"column", gap:18 }}>
             <ProgressivePractice onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} />
+            <PracticeTimer onFinish={hardStop} />
           </div>
         </>
       )}
@@ -1193,34 +1260,8 @@ export default function DualMetronome() {
           <div style={{ maxWidth:880, margin:"22px auto 18px" }}>
             <ProgressivePractice onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} />
           </div>
-          {/* presets */}
-          <div style={{ maxWidth:880, margin:"0 auto 90px", background:"#1e2028", borderRadius:12, padding:20 }}>
-            <div style={{ color:"#444", fontSize:9, fontFamily:"monospace", marginBottom:14, letterSpacing:2 }}>PRESETS</div>
-            <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
-              <input value={presetName} onChange={(e) => setPresetName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && savePreset()}
-                placeholder="Nombre del preset..."
-                style={{ flex:1, minWidth:150, background:"#252830", border:"1px solid #3a3d47", borderRadius:6, color:"#ddd", fontFamily:"monospace", fontSize:12, padding:"7px 11px", outline:"none" }} />
-              <button onClick={savePreset} style={{ background:"#ff6b4a1a", border:"1px solid #ff6b4a55", borderRadius:6, color:"#ff6b4a", cursor:"pointer", padding:"7px 13px", display:"flex", alignItems:"center", gap:5, fontFamily:"monospace", fontSize:12 }}>
-                <Save size={13} /> Guardar
-              </button>
-            </div>
-            {presets.length === 0 ? (
-              <div style={{ color:"#333", fontSize:11, fontFamily:"monospace", textAlign:"center", padding:14 }}>No hay presets guardados aún.</div>
-            ) : (
-              <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
-                {presets.map((pr) => (
-                  <div key={pr.id} style={{ display:"flex", alignItems:"center", gap:8, background:"#252830", borderRadius:7, padding:"9px 12px" }}>
-                    <button onClick={() => loadPreset(pr)} style={{ flex:1, background:"none", border:"none", color:"#ddd", fontFamily:"monospace", fontSize:12, textAlign:"left", cursor:"pointer", padding:0 }}>
-                      <span style={{ color:"#666" }}>{pr.name}</span>
-                      <span style={{ color:"#ff6b4a", marginLeft:10 }}>A: {Math.round(pr.a.bpm)} {pr.a.timeSig}</span>
-                      <span style={{ color:"#4ad9ff", marginLeft:10 }}>B: {Math.round(pr.b.bpm)} {pr.b.timeSig}</span>
-                    </button>
-                    <button onClick={() => deletePreset(pr.id)} style={{ background:"none", border:"none", color:"#444", cursor:"pointer", padding:3, display:"flex", alignItems:"center" }}><Trash2 size={13} /></button>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div style={{ maxWidth:880, margin:"0 auto 90px" }}>
+            <PracticeTimer onFinish={hardStop} />
           </div>
         </>
       )}
