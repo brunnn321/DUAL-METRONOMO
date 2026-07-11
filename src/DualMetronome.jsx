@@ -31,23 +31,6 @@ const FIGURES = [
 const BASE_VALUES     = [2, 3, 4, 5, 6, 7, 8];
 const DERIVADO_VALUES = [2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 15];
 
-const POLY_NAMES = {
-  "3:2":  { name:"Tresillo",     cat:"Polirritmia" },
-  "2:3":  { name:"Tresillo",     cat:"Polirritmia" },
-  "4:3":  { name:"4 contra 3",   cat:"Polirritmia" },
-  "3:4":  { name:"4 contra 3",   cat:"Polirritmia" },
-  "5:4":  { name:"Quintillo",    cat:"Polirritmia" },
-  "4:5":  { name:"Quintillo",    cat:"Polirritmia" },
-  "7:4":  { name:"Septillo",     cat:"Polirritmia" },
-  "4:7":  { name:"Septillo",     cat:"Polirritmia" },
-  "9:8":  { name:"Nonillo",      cat:"Polirritmia" },
-  "8:9":  { name:"Nonillo",      cat:"Polirritmia" },
-  "15:8": { name:"Quindecillo",  cat:"Polirritmia" },
-  "8:15": { name:"Quindecillo",  cat:"Polirritmia" },
-};
-const getPolyInfo = (a, b) =>
-  POLY_NAMES[`${a}:${b}`] ?? POLY_NAMES[`${b}:${a}`] ?? { name:"Relación personalizada", cat:"Polirritmia" };
-
 // params that require a scheduler restart to stay in sync
 const NEEDS_RESTART = new Set(["bpm", "timeSig", "subdivision"]);
 
@@ -197,7 +180,6 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
 function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
   const ratio  = `${derivado}:${base}`;
   const bpmB   = bpmBase * derivado / base;
-  const poly   = getPolyInfo(derivado, base);
   const fmtBpm = (v) => Number.isInteger(v) ? v : v.toFixed(2);
 
   return (
@@ -233,7 +215,7 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
       <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
         <div style={{ flex:1, minWidth:200 }}>
           <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:8 }}>
-            BASE <span style={{ color:"#444" }}>· anillo exterior</span>
+            BASE
           </div>
           <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
             {BASE_VALUES.map((v) => {
@@ -252,7 +234,7 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
         </div>
         <div style={{ flex:1, minWidth:200 }}>
           <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:8 }}>
-            DERIVADO <span style={{ color:"#444" }}>· anillo interior</span>
+            DERIVADO
           </div>
           <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
             {DERIVADO_VALUES.map((v) => {
@@ -282,16 +264,8 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
           <div style={{ color:"#eee", fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, marginTop:3 }}>{ratio}</div>
         </div>
         <div>
-          <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>NOMBRE</div>
-          <div style={{ color:"#ccc", fontFamily:"monospace", fontSize:14, fontWeight:600, marginTop:3 }}>{poly.name}</div>
-        </div>
-        <div>
           <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>BPM DERIVADO</div>
           <div style={{ color:"#4ad9ff", fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, marginTop:3 }}>{fmtBpm(bpmB)}</div>
-        </div>
-        <div>
-          <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>CATEGORÍA</div>
-          <div style={{ color:"#777", fontFamily:"monospace", fontSize:13, marginTop:3 }}>{poly.cat}</div>
         </div>
       </div>
     </div>
@@ -302,7 +276,7 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
 function Picker({ label, items, value, onChange, accent }) {
   return (
     <div>
-      <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:5 }}>{label}</div>
+      {label && <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:5 }}>{label}</div>}
       <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
         {items.map(({ key, label: lbl }) => {
           const on = value === key;
@@ -722,9 +696,6 @@ function SyncControls({ metA, metB, onChangeA, onChangeB }) {
           { label:"DERIVADO", accent:"#4ad9ff", met:metB, onChange:onChangeB },
         ].map(({ label, accent, met, onChange }) => (
           <div key={label} style={{ flex:1, minWidth:200 }}>
-            <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:6 }}>
-              <span style={{ color:accent }}>●</span> VOLUMEN {label}
-            </div>
             <div style={{ display:"flex", alignItems:"center", gap:8 }}>
               <button onClick={() => onChange({ muted: !met.muted })} style={{ background:"none", border:"none", cursor:"pointer", color: met.muted ? "#333" : accent, padding:2 }}>
                 {met.muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
@@ -745,9 +716,9 @@ function SyncControls({ metA, metB, onChangeA, onChangeB }) {
           { label:"DERIVADO", accent:"#4ad9ff", met:metB, onChange:onChangeB },
         ].map(({ label, accent, met, onChange }) => (
           <div key={label} style={{ flex:1, minWidth:200, display:"flex", flexDirection:"column", gap:8 }}>
-            <Picker label={`${label} – FUERTE (beat 1)`} items={SOUNDS} value={met.strongSound}
+            <Picker items={SOUNDS} value={met.strongSound}
               onChange={(v) => onChange({ strongSound: v })} accent={accent} />
-            <Picker label={`${label} – DÉBIL`} items={SOUNDS} value={met.weakSound}
+            <Picker items={SOUNDS} value={met.weakSound}
               onChange={(v) => onChange({ weakSound: v })} accent={accent} />
           </div>
         ))}
