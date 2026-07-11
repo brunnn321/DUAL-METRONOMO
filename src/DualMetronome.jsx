@@ -15,17 +15,18 @@ const SOUNDS = [
 ];
 
 // figures: how each beat (pulso) gets subdivided — Dual Libre only
+// sym = note glyph, num = small tuplet number drawn ABOVE the note (like a tresillo in scores)
 const FIGURES = [
-  { value:1,  label:"PULSO" },
-  { value:2,  label:"CORCHEAS" },
-  { value:3,  label:"TRESILLO" },
-  { value:4,  label:"SEMICORCHEA" },
-  { value:5,  label:"QUINTILLO" },
-  { value:6,  label:"SEISILLO" },
-  { value:7,  label:"SIETESILLO" },
-  { value:9,  label:"NUEVESILLO" },
-  { value:11, label:"ONCESILLO" },
-  { value:13, label:"TRECESILLO" },
+  { value:1,  sym:"♩", num:null }, // pulso
+  { value:2,  sym:"♫", num:null }, // corcheas
+  { value:3,  sym:"♫", num:3    }, // tresillo
+  { value:4,  sym:"♬", num:null }, // semicorcheas
+  { value:5,  sym:"♬", num:5    }, // quintillo
+  { value:6,  sym:"♬", num:6    }, // seisillo
+  { value:7,  sym:"♬", num:7    }, // sietesillo
+  { value:9,  sym:"♬", num:9    }, // nuevesillo
+  { value:11, sym:"♬", num:11   }, // oncesillo
+  { value:13, sym:"♬", num:13   }, // trecesillo
 ];
 
 const BASE_VALUES     = [2, 3, 4, 5, 6, 7, 8];
@@ -272,25 +273,18 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
   );
 }
 
-// ─── picker ───────────────────────────────────────────────────────────────────
-function Picker({ label, items, value, onChange, accent }) {
+// ─── sound select (dropdown) ──────────────────────────────────────────────────
+function SoundSelect({ label, value, onChange, accent }) {
   return (
-    <div>
-      {label && <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:5 }}>{label}</div>}
-      <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-        {items.map(({ key, label: lbl }) => {
-          const on = value === key;
-          return (
-            <button key={key} onClick={() => onChange(key)} style={{
-              background: on ? accent : "#252830",
-              border:`1px solid ${on ? accent : "#3a3d47"}`,
-              borderRadius:4, color: on ? "#15171c" : "#666",
-              fontFamily:"monospace", fontSize:9, fontWeight: on ? 700 : 400,
-              padding:"3px 6px", cursor:"pointer", transition:"all 0.1s",
-            }}>{lbl}</button>
-          );
-        })}
-      </div>
+    <div style={{ display:"flex", alignItems:"center", gap:7, flex:1, minWidth:120 }}>
+      <span style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, minWidth:40 }}>{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)} style={{
+        flex:1, background:"#252830", border:`1px solid ${accent}33`, borderRadius:5,
+        color:accent, fontFamily:"monospace", fontSize:11, fontWeight:600,
+        padding:"5px 8px", outline:"none", cursor:"pointer",
+      }}>
+        {SOUNDS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+      </select>
     </div>
   );
 }
@@ -364,13 +358,21 @@ function MetronomePanel({ color, state, onChange, onTiempoChange, running, onTog
 
       <button onClick={handleTap} style={{ background:`${accent}14`, border:`1px solid ${accent}44`, borderRadius:7, color:accent, fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1 }}>TAP TEMPO</button>
 
-      <div>
-        <div style={{ color:"#444", fontSize:9, fontFamily:"monospace", marginBottom:6, letterSpacing:1 }}>FIGURAS</div>
-        <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-          {FIGURES.map(({ value, label }) => (
-            <button key={value} onClick={() => onChange({ subdivision: value })} style={{ background: subdivision===value ? accent : "#252830", border:`1px solid ${subdivision===value ? accent : "#3a3d47"}`, borderRadius:5, color: subdivision===value ? "#15171c" : "#777", fontFamily:"monospace", fontSize:11, padding:"3px 8px", cursor:"pointer", fontWeight: subdivision===value ? 700 : 400 }}>{label}</button>
-          ))}
-        </div>
+      <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
+        {FIGURES.map(({ value, sym, num }) => {
+          const on = subdivision === value;
+          return (
+            <button key={value} onClick={() => onChange({ subdivision: value })} style={{
+              background: on ? accent : "#252830", border:`1px solid ${on ? accent : "#3a3d47"}`,
+              borderRadius:5, color: on ? "#15171c" : "#777", cursor:"pointer",
+              display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end",
+              padding:"2px 9px", minWidth:34, lineHeight:1, gap:1,
+            }}>
+              <span style={{ fontSize:8, height:9, fontFamily:"monospace", fontWeight:700 }}>{num ?? ""}</span>
+              <span style={{ fontSize:17 }}>{sym}</span>
+            </button>
+          );
+        })}
       </div>
 
       <div style={{ display:"flex", gap:6, justifyContent:"center", flexWrap:"wrap" }}>
@@ -380,8 +382,10 @@ function MetronomePanel({ color, state, onChange, onTiempoChange, running, onTog
       </div>
 
       <div style={{ borderTop:`1px solid ${accent}1a`, paddingTop:12, display:"flex", flexDirection:"column", gap:8 }}>
-        <Picker label="FUERTE (beat 1)" items={SOUNDS} value={strongSound} onChange={(v) => onChange({ strongSound:v })} accent={accent} />
-        <Picker label="DÉBIL"           items={SOUNDS} value={weakSound}   onChange={(v) => onChange({ weakSound:v })}   accent={accent} />
+        <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+          <SoundSelect label="FUERTE" value={strongSound} onChange={(v) => onChange({ strongSound:v })} accent={accent} />
+          <SoundSelect label="DÉBIL"  value={weakSound}   onChange={(v) => onChange({ weakSound:v })}   accent={accent} />
+        </div>
         <div>
           <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:5 }}>TIEMPO</div>
           <div style={{ display:"flex", gap:4 }}>
@@ -606,6 +610,47 @@ function PracticeTimer({ onFinish }) {
   );
 }
 
+// ─── practice panel (collapsible, tabs: TIMER | PROGRESIVA) ───────────────────
+// Both children stay mounted (hidden with display:none) so a running timer or
+// progressive session keeps counting while collapsed or on the other tab.
+function PracticePanel({ onBpmChange, onActivate, running, onFinish }) {
+  const [open, setOpen] = useState(false);
+  const [tab, setTab]   = useState("timer");
+  return (
+    <div style={{ background:"#1e2028", borderRadius:12, border:"1px solid #252830" }}>
+      <button onClick={() => setOpen((o) => !o)} style={{
+        width:"100%", background:"none", border:"none", cursor:"pointer",
+        display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 20px",
+      }}>
+        <span style={{ color:"#555", fontSize:10, fontFamily:"monospace", letterSpacing:2 }}>PRÁCTICA</span>
+        <ChevronRight size={14} color="#555" style={{ transform: open ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
+      </button>
+      <div style={{ display: open ? "flex" : "none", flexDirection:"column", gap:12, padding:"0 16px 16px" }}>
+        <div style={{ display:"flex", background:"#15171c", borderRadius:8, padding:3, gap:2 }}>
+          {[["timer","TIMER"],["prog","PROGRESIVA"]].map(([k, lbl]) => {
+            const on = tab === k;
+            return (
+              <button key={k} onClick={() => setTab(k)} style={{
+                flex:1, background: on ? "#ffd04a1a" : "none",
+                border:`1px solid ${on ? "#ffd04a" : "transparent"}`,
+                borderRadius:6, color: on ? "#ffd04a" : "#444",
+                fontFamily:"monospace", fontSize:10, fontWeight: on ? 600 : 400,
+                padding:"7px 10px", cursor:"pointer", letterSpacing:0.5,
+              }}>{lbl}</button>
+            );
+          })}
+        </div>
+        <div style={{ display: tab === "timer" ? "block" : "none" }}>
+          <PracticeTimer onFinish={onFinish} />
+        </div>
+        <div style={{ display: tab === "prog" ? "block" : "none" }}>
+          <ProgressivePractice onBpmChange={onBpmChange} onActivate={onActivate} running={running} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── beat lights (split-screen, A on top half / B on bottom half) ────────────
 function BeatLights({ metA, metB, runningA, runningB, measuresA, measuresB, enabled }) {
   if (!enabled) return null;
@@ -716,9 +761,9 @@ function SyncControls({ metA, metB, onChangeA, onChangeB }) {
           { label:"DERIVADO", accent:"#4ad9ff", met:metB, onChange:onChangeB },
         ].map(({ label, accent, met, onChange }) => (
           <div key={label} style={{ flex:1, minWidth:200, display:"flex", flexDirection:"column", gap:8 }}>
-            <Picker items={SOUNDS} value={met.strongSound}
+            <SoundSelect label="FUERTE" value={met.strongSound}
               onChange={(v) => onChange({ strongSound: v })} accent={accent} />
-            <Picker items={SOUNDS} value={met.weakSound}
+            <SoundSelect label="DÉBIL" value={met.weakSound}
               onChange={(v) => onChange({ weakSound: v })} accent={accent} />
           </div>
         ))}
@@ -1195,9 +1240,8 @@ export default function DualMetronome() {
             />
           </div>
           <SyncControls metA={metA} metB={metB} onChangeA={changeMetA} onChangeB={changeMetB} />
-          <div style={{ maxWidth:680, margin:"0 auto 90px", display:"flex", flexDirection:"column", gap:18 }}>
-            <ProgressivePractice onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} />
-            <PracticeTimer onFinish={hardStop} />
+          <div style={{ maxWidth:680, margin:"0 auto 90px" }}>
+            <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} onFinish={hardStop} />
           </div>
         </>
       )}
@@ -1214,9 +1258,8 @@ export default function DualMetronome() {
               onBpm={handlePolyBpm} onBeatsA={handlePolyBeatsA} onBeatsB={handlePolyBeatsB}
             />
           </div>
-          <div style={{ maxWidth:680, margin:"0 auto 90px", display:"flex", flexDirection:"column", gap:18 }}>
-            <ProgressivePractice onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} />
-            <PracticeTimer onFinish={hardStop} />
+          <div style={{ maxWidth:680, margin:"0 auto 90px" }}>
+            <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} onFinish={hardStop} />
           </div>
         </>
       )}
@@ -1228,11 +1271,8 @@ export default function DualMetronome() {
             <MetronomePanel color="A" state={metA} onChange={changeMetA} onTiempoChange={tiempoChangeA} running={runningA} onToggle={toggleA} measures={measuresA} />
             <MetronomePanel color="B" state={metB} onChange={changeMetB} onTiempoChange={tiempoChangeB} running={runningB} onToggle={toggleB} measures={measuresB} />
           </div>
-          <div style={{ maxWidth:880, margin:"22px auto 18px" }}>
-            <ProgressivePractice onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} />
-          </div>
-          <div style={{ maxWidth:880, margin:"0 auto 90px" }}>
-            <PracticeTimer onFinish={hardStop} />
+          <div style={{ maxWidth:880, margin:"22px auto 90px" }}>
+            <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} onFinish={hardStop} />
           </div>
         </>
       )}
