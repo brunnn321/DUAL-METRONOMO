@@ -7,6 +7,7 @@ const lcm = (a, b) => (a * b) / gcd(a, b);
 
 // ─── constants ────────────────────────────────────────────────────────────────
 const beatsPerMeasure = (sig) => parseInt(sig.split("/")[0]);
+const fmtMMSS = (s) => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 
 const SOUNDS = [
   { key:"click", label:"CLICK" }, { key:"beep",  label:"BEEP"  },
@@ -15,19 +16,49 @@ const SOUNDS = [
 ];
 
 // figures: how each beat (pulso) gets subdivided — Dual Libre only
-// sym = note glyph, num = small tuplet number drawn ABOVE the note (like a tresillo in scores)
+// kind = note icon, num = small tuplet number drawn ABOVE the note (like a tresillo in scores)
 const FIGURES = [
-  { value:1,  sym:"♩", num:null }, // pulso
-  { value:2,  sym:"♫", num:null }, // corcheas
-  { value:3,  sym:"♫", num:3    }, // tresillo
-  { value:4,  sym:"♬", num:null }, // semicorcheas
-  { value:5,  sym:"♬", num:5    }, // quintillo
-  { value:6,  sym:"♬", num:6    }, // seisillo
-  { value:7,  sym:"♬", num:7    }, // sietesillo
-  { value:9,  sym:"♬", num:9    }, // nuevesillo
-  { value:11, sym:"♬", num:11   }, // oncesillo
-  { value:13, sym:"♬", num:13   }, // trecesillo
+  { value:1,  kind:"quarter",   num:null }, // pulso
+  { value:2,  kind:"eighth",    num:null }, // corcheas
+  { value:3,  kind:"eighth",    num:3    }, // tresillo
+  { value:4,  kind:"sixteenth", num:null }, // semicorcheas
+  { value:5,  kind:"sixteenth", num:5    }, // quintillo
+  { value:6,  kind:"sixteenth", num:6    }, // seisillo
+  { value:7,  kind:"sixteenth", num:7    }, // sietesillo
+  { value:9,  kind:"sixteenth", num:9    }, // nuevesillo
+  { value:11, kind:"sixteenth", num:11   }, // oncesillo
+  { value:13, kind:"sixteenth", num:13   }, // trecesillo
 ];
+
+// hand-drawn note icons (SVG, currentColor) — consistent on every OS/font
+function NoteIcon({ kind, size = 16 }) {
+  if (kind === "quarter") return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="currentColor">
+      <ellipse cx="8.5" cy="15.8" rx="3.4" ry="2.5" transform="rotate(-20 8.5 15.8)" />
+      <rect x="10.9" y="3" width="1.5" height="13" rx="0.7" />
+    </svg>
+  );
+  if (kind === "eighth") return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="currentColor">
+      <ellipse cx="4.6" cy="16" rx="2.7" ry="2.1" transform="rotate(-20 4.6 16)" />
+      <ellipse cx="13.8" cy="16" rx="2.7" ry="2.1" transform="rotate(-20 13.8 16)" />
+      <rect x="6.5" y="4" width="1.3" height="12" />
+      <rect x="15.7" y="4" width="1.3" height="12" />
+      <rect x="6.5" y="4" width="10.5" height="2.6" />
+    </svg>
+  );
+  // sixteenth — double beam
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="currentColor">
+      <ellipse cx="4.6" cy="16" rx="2.7" ry="2.1" transform="rotate(-20 4.6 16)" />
+      <ellipse cx="13.8" cy="16" rx="2.7" ry="2.1" transform="rotate(-20 13.8 16)" />
+      <rect x="6.5" y="3" width="1.3" height="13" />
+      <rect x="15.7" y="3" width="1.3" height="13" />
+      <rect x="6.5" y="3" width="10.5" height="2.2" />
+      <rect x="6.5" y="7.2" width="10.5" height="2.2" />
+    </svg>
+  );
+}
 
 const BASE_VALUES     = [2, 3, 4, 5, 6, 7, 8];
 const DERIVADO_VALUES = [2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 15];
@@ -359,7 +390,7 @@ function MetronomePanel({ color, state, onChange, onTiempoChange, running, onTog
       <button onClick={handleTap} style={{ background:`${accent}14`, border:`1px solid ${accent}44`, borderRadius:7, color:accent, fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1 }}>TAP TEMPO</button>
 
       <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-        {FIGURES.map(({ value, sym, num }) => {
+        {FIGURES.map(({ value, kind, num }) => {
           const on = subdivision === value;
           return (
             <button key={value} onClick={() => onChange({ subdivision: value })} style={{
@@ -369,7 +400,7 @@ function MetronomePanel({ color, state, onChange, onTiempoChange, running, onTog
               padding:"2px 9px", minWidth:34, lineHeight:1, gap:1,
             }}>
               <span style={{ fontSize:8, height:9, fontFamily:"monospace", fontWeight:700 }}>{num ?? ""}</span>
-              <span style={{ fontSize:17 }}>{sym}</span>
+              <NoteIcon kind={kind} />
             </button>
           );
         })}
@@ -443,7 +474,7 @@ function DualSwitch({ on, onToggle }) {
 }
 
 // ─── progressive practice ─────────────────────────────────────────────────────
-function ProgressivePractice({ onBpmChange, onActivate, running }) {
+function ProgressivePractice({ onBpmChange, onActivate, running, onStatus }) {
   const [on, setOn]     = useState(false);
   const [cfg, setCfg]   = useState({ bpmStart:60, bpmMax:140, increment:5, intervalSec:120, onMax:"stop" });
   const [curBpm, setCurBpm]     = useState(60);
@@ -452,8 +483,12 @@ function ProgressivePractice({ onBpmChange, onActivate, running }) {
   const cfgRef    = useRef(cfg);
   const onBpmRef  = useRef(onBpmChange);
   const timerRef  = useRef(null);
+  const onStatusRef = useRef(onStatus);
   useEffect(() => { cfgRef.current = cfg; }, [cfg]);
   useEffect(() => { onBpmRef.current = onBpmChange; }, [onBpmChange]);
+  useEffect(() => { onStatusRef.current = onStatus; }, [onStatus]);
+  useEffect(() => { onStatusRef.current?.({ progOn: on, progLeft: timeLeft }); }, [on, timeLeft]);
+  useEffect(() => () => onStatusRef.current?.({ progOn: false, progLeft: 0 }), []);
 
   const fmt = (s) => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
   const set  = (k, v) => setCfg((c) => ({ ...c, [k]:v }));
@@ -549,14 +584,19 @@ function playAlarm() {
   setTimeout(() => ctx.close(), 1400);
 }
 
-function PracticeTimer({ onFinish }) {
+function PracticeTimer({ onFinish, onStatus }) {
   const [minutes, setMinutes] = useState(15);
   const [on, setOn]           = useState(false);
   const [done, setDone]       = useState(false);
   const [timeLeft, setTimeLeft] = useState(15 * 60);
   const timerRef  = useRef(null);
   const onFinishRef = useRef(onFinish);
+  const onStatusRef = useRef(onStatus);
   useEffect(() => { onFinishRef.current = onFinish; }, [onFinish]);
+  useEffect(() => { onStatusRef.current = onStatus; }, [onStatus]);
+  // report status upward (collapsed bar + performance-mode corner countdown)
+  useEffect(() => { onStatusRef.current?.({ timerOn: on, timerLeft: timeLeft }); }, [on, timeLeft]);
+  useEffect(() => () => onStatusRef.current?.({ timerOn: false, timerLeft: 0 }), []);
 
   const fmt = (s) => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 
@@ -613,17 +653,30 @@ function PracticeTimer({ onFinish }) {
 // ─── practice panel (collapsible, tabs: TIMER | PROGRESIVA) ───────────────────
 // Both children stay mounted (hidden with display:none) so a running timer or
 // progressive session keeps counting while collapsed or on the other tab.
-function PracticePanel({ onBpmChange, onActivate, running, onFinish }) {
+function PracticePanel({ onBpmChange, onActivate, running, onFinish, status, onStatus }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab]   = useState("timer");
+  const active = status?.timerOn || status?.progOn;
   return (
-    <div style={{ background:"#1e2028", borderRadius:12, border:"1px solid #252830" }}>
+    <div style={{ background:"#1e2028", borderRadius:12, border:`1px solid ${active ? "#ffd04a44" : "#252830"}`, transition:"border-color 0.3s" }}>
       <button onClick={() => setOpen((o) => !o)} style={{
         width:"100%", background:"none", border:"none", cursor:"pointer",
-        display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 20px",
+        display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 20px", gap:10,
       }}>
         <span style={{ color:"#555", fontSize:10, fontFamily:"monospace", letterSpacing:2 }}>PRÁCTICA</span>
-        <ChevronRight size={14} color="#555" style={{ transform: open ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
+        <span style={{ display:"flex", alignItems:"center", gap:12 }}>
+          {status?.timerOn && (
+            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:700, color:"#ffd04a" }}>
+              {fmtMMSS(status.timerLeft)}
+            </span>
+          )}
+          {status?.progOn && (
+            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:700, color:"#ffd04a" }}>
+              ▲ {fmtMMSS(status.progLeft)}
+            </span>
+          )}
+          <ChevronRight size={14} color="#555" style={{ transform: open ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
+        </span>
       </button>
       <div style={{ display: open ? "flex" : "none", flexDirection:"column", gap:12, padding:"0 16px 16px" }}>
         <div style={{ display:"flex", background:"#15171c", borderRadius:8, padding:3, gap:2 }}>
@@ -641,10 +694,10 @@ function PracticePanel({ onBpmChange, onActivate, running, onFinish }) {
           })}
         </div>
         <div style={{ display: tab === "timer" ? "block" : "none" }}>
-          <PracticeTimer onFinish={onFinish} />
+          <PracticeTimer onFinish={onFinish} onStatus={onStatus} />
         </div>
         <div style={{ display: tab === "prog" ? "block" : "none" }}>
-          <ProgressivePractice onBpmChange={onBpmChange} onActivate={onActivate} running={running} />
+          <ProgressivePractice onBpmChange={onBpmChange} onActivate={onActivate} running={running} onStatus={onStatus} />
         </div>
       </div>
     </div>
@@ -879,6 +932,10 @@ export default function DualMetronome() {
   const [measuresA, setMeasuresA] = useState(0);
   const [measuresB, setMeasuresB] = useState(0);
   const [flashOn, setFlashOn] = useState(true);
+  // practice status reported by PracticeTimer / ProgressivePractice
+  // (shown in the collapsed PRÁCTICA bar and as a corner countdown in lights mode)
+  const [practiceStatus, setPracticeStatus] = useState({});
+  const updatePracticeStatus = useCallback((patch) => setPracticeStatus((p) => ({ ...p, ...patch })), []);
 
   // audio refs — the scheduler reads exclusively from these, never from state
   const ctxRef     = useRef(null);
@@ -1212,6 +1269,13 @@ export default function DualMetronome() {
       <FlashToggle on={flashOn} onToggle={() => setFlashOn((v) => !v)} />
       {(isMetrica || isPolimetria) && <TapTempoButton onTap={isMetrica ? handleGlobalTap : handlePolyTap} />}
       <DualSwitch on={dualOn} onToggle={toggleDual} />
+      {performanceMode && practiceStatus.timerOn && (
+        <div style={{
+          position:"fixed", bottom:24, left:20, zIndex:1000,
+          fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700,
+          color:"#ffd04a", textShadow:"0 1px 6px rgba(0,0,0,0.7)", pointerEvents:"none",
+        }}>{fmtMMSS(practiceStatus.timerLeft)}</div>
+      )}
 
       {!performanceMode && (
       <>
@@ -1241,7 +1305,7 @@ export default function DualMetronome() {
           </div>
           <SyncControls metA={metA} metB={metB} onChangeA={changeMetA} onChangeB={changeMetB} />
           <div style={{ maxWidth:680, margin:"0 auto 90px" }}>
-            <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} onFinish={hardStop} />
+            <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} onFinish={hardStop} status={practiceStatus} onStatus={updatePracticeStatus} />
           </div>
         </>
       )}
@@ -1259,7 +1323,7 @@ export default function DualMetronome() {
             />
           </div>
           <div style={{ maxWidth:680, margin:"0 auto 90px" }}>
-            <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} onFinish={hardStop} />
+            <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} onFinish={hardStop} status={practiceStatus} onStatus={updatePracticeStatus} />
           </div>
         </>
       )}
@@ -1272,7 +1336,7 @@ export default function DualMetronome() {
             <MetronomePanel color="B" state={metB} onChange={changeMetB} onTiempoChange={tiempoChangeB} running={runningB} onToggle={toggleB} measures={measuresB} />
           </div>
           <div style={{ maxWidth:880, margin:"22px auto 90px" }}>
-            <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} onFinish={hardStop} />
+            <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} onFinish={hardStop} status={practiceStatus} onStatus={updatePracticeStatus} />
           </div>
         </>
       )}
