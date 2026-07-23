@@ -223,7 +223,7 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
     }}>
       {/* BPM base */}
       <div>
-        <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:2, marginBottom:8 }}>BPM BASE</div>
+        <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:2, marginBottom:8 }}>BPM A</div>
         <div style={{ display:"flex", alignItems:"center", gap:16 }}>
           <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:52, fontWeight:700, color:"#ff6b4a", lineHeight:1, minWidth:96 }}>
             {bpmBase}
@@ -248,7 +248,7 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
       <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
         <div style={{ flex:1, minWidth:200 }}>
           <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:8 }}>
-            BASE
+            A
           </div>
           <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
             {BASE_VALUES.map((v) => {
@@ -267,7 +267,7 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
         </div>
         <div style={{ flex:1, minWidth:200 }}>
           <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:8 }}>
-            DERIVADO
+            B
           </div>
           <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
             {DERIVADO_VALUES.map((v) => {
@@ -297,7 +297,7 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
           <div style={{ color:"#eee", fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, marginTop:3 }}>{ratio}</div>
         </div>
         <div>
-          <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>BPM DERIVADO</div>
+          <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>BPM B</div>
           <div style={{ color:"#4ad9ff", fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, marginTop:3 }}>{fmtBpm(bpmB)}</div>
         </div>
       </div>
@@ -783,8 +783,8 @@ function SyncControls({ metA, metB, onChangeA, onChangeB }) {
       {/* volume row */}
       <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
         {[
-          { label:"BASE",     accent:"#ff6b4a", met:metA, onChange:onChangeA },
-          { label:"DERIVADO", accent:"#4ad9ff", met:metB, onChange:onChangeB },
+          { label:"A", accent:"#ff6b4a", met:metA, onChange:onChangeA },
+          { label:"B", accent:"#4ad9ff", met:metB, onChange:onChangeB },
         ].map(({ label, accent, met, onChange }) => (
           <div key={label} style={{ flex:1, minWidth:200 }}>
             <div style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -803,8 +803,8 @@ function SyncControls({ metA, metB, onChangeA, onChangeB }) {
       {/* sound pickers row */}
       <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
         {[
-          { label:"BASE",     accent:"#ff6b4a", met:metA, onChange:onChangeA },
-          { label:"DERIVADO", accent:"#4ad9ff", met:metB, onChange:onChangeB },
+          { label:"A", accent:"#ff6b4a", met:metA, onChange:onChangeA },
+          { label:"B", accent:"#4ad9ff", met:metB, onChange:onChangeB },
         ].map(({ label, accent, met, onChange }) => (
           <div key={label} style={{ flex:1, minWidth:200, display:"flex", flexDirection:"column", gap:8 }}>
             <SoundSelect label="FUERTE" value={met.strongSound}
