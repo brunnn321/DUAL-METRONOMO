@@ -919,7 +919,7 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, mult,
         <div style={{ flex:1 }}>
           <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1, marginBottom:4 }}>COINCIDENCIA</div>
           <div style={{ color:"#666", fontFamily:"monospace", fontSize:12, lineHeight:1.8 }}>
-            Los <span style={{ color:"#eee" }}>tiempo&nbsp;1</span> coinciden cada{" "}
+            El <span style={{ color:"#eee" }}>tiempo&nbsp;1</span> coincide cada{" "}
             <span style={{ color:"#4aff9a", fontWeight:700 }}>{lcmAB}</span> pulsos
           </div>
         </div>
