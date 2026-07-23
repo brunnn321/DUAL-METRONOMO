@@ -210,7 +210,7 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
 }
 
 // ─── polimetría panel ─────────────────────────────────────────────────────────
-function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, mult, onMult }) {
+function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
   const ratio  = `${derivado}:${base}`;
   const bpmB   = bpmBase * derivado / base;
   const fmtBpm = (v) => Number.isInteger(v) ? v : v.toFixed(2);
@@ -243,8 +243,6 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, mult, 
           </div>
         </div>
       </div>
-
-      <MultButtons mult={mult} onMult={onMult} accent="#ff6b4a" />
 
       {/* selectors */}
       <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
@@ -303,26 +301,6 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, mult, 
           <div style={{ color:"#4ad9ff", fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, marginTop:3 }}>{fmtBpm(bpmB)}</div>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ─── tempo multiplier buttons (×0.5 / ×1 / ×2) ────────────────────────────────
-function MultButtons({ mult, onMult, accent }) {
-  return (
-    <div style={{ display:"flex", gap:3 }}>
-      {[0.5, 1, 2].map((m) => {
-        const on = mult === m;
-        return (
-          <button key={m} onClick={() => onMult(m)} style={{
-            background: on ? accent : "#252830",
-            border:`1px solid ${on ? accent : "#3a3d47"}`,
-            borderRadius:4, color: on ? "#15171c" : "#666",
-            fontFamily:"'JetBrains Mono',monospace", fontSize:9, fontWeight: on ? 700 : 400,
-            padding:"2px 8px", cursor:"pointer", transition:"all 0.1s",
-          }}>×{m}</button>
-        );
-      })}
     </div>
   );
 }
@@ -433,23 +411,6 @@ function MetronomePanel({ color, state, onChange, onTiempoChange, running, onTog
         {Array.from({ length:subdivision }, (_,i) => (
           <div key={i} style={{ width:15, height:15, borderRadius:"50%", background: subTick===i ? (i===0 ? accent : `${accent}77`) : (i===0 ? dimAccent : "#222530"), boxShadow: subTick===i ? `0 0 8px ${accent}` : "none", border:`1px solid ${accent}1a`, transition:"background 0.04s, box-shadow 0.04s" }} />
         ))}
-      </div>
-
-      <div style={{ display:"flex", gap:3, justifyContent:"center" }}>
-        {[["×0.5",0.5],["×1",1],["×2",2]].map(([lbl, mult]) => {
-          const target = Math.round(baseBpm * mult);
-          const on = Math.round(bpm) === target;
-          const handleTiempo = () => (onTiempoChange ?? onChange)({ bpm: Math.min(600, Math.max(1, target)) });
-          return (
-            <button key={lbl} onClick={handleTiempo} style={{
-              background: on ? accent : "#252830",
-              border:`1px solid ${on ? accent : "#3a3d47"}`,
-              borderRadius:4, color: on ? "#15171c" : "#666",
-              fontFamily:"'JetBrains Mono',monospace", fontSize:9, fontWeight: on ? 700 : 400,
-              padding:"2px 8px", cursor:"pointer", transition:"all 0.1s",
-            }}>{lbl}</button>
-          );
-        })}
       </div>
 
       <div style={{ borderTop:`1px solid ${accent}1a` }}>
@@ -859,7 +820,7 @@ function SyncControls({ metA, metB, onChangeA, onChangeB }) {
 }
 
 // ─── polimetría panel ─────────────────────────────────────────────────────────
-function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, mult, onMult }) {
+function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB }) {
   const lcmAB = lcm(beatsA, beatsB);
   return (
     <div style={{ background:"#1e2028", borderRadius:12, padding:"20px 24px", maxWidth:680, margin:"0 auto", display:"flex", flexDirection:"column", gap:18 }}>
@@ -878,8 +839,6 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, mult,
           </div>
         </div>
       </div>
-
-      <MultButtons mult={mult} onMult={onMult} accent="#4aff9a" />
 
       {/* selectores de tiempos */}
       <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
@@ -944,7 +903,6 @@ export default function DualMetronome() {
   const [relBpmBase, setRelBpmBase] = useState(90);
   const relBaseRef  = useRef(4);
   const relDerivRef = useRef(5);
-  const [relMult, setRelMult] = useState(1);
   const relMultRef = useRef(1);
 
   // polimetría (tercer modo) params
@@ -954,7 +912,6 @@ export default function DualMetronome() {
   const polyBpmRef    = useRef(90);
   const polyBeatsARef = useRef(4);
   const polyBeatsBRef = useRef(3);
-  const [polyMult, setPolyMult] = useState(1);
   const polyMultRef = useRef(1);
 
   // shared audio state
@@ -1154,12 +1111,6 @@ export default function DualMetronome() {
     restartNow();
   }, [restartNow]);
 
-  const handleRelMult = useCallback((m) => {
-    setRelMult(m); relMultRef.current = m;
-    applyPoliParams(relBpmBase, relBaseRef.current, relDerivRef.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applyPoliParams, relBpmBase]);
-
   const handleRelBpmBase = useCallback((v) => {
     setRelBpmBase(v);
     applyPoliParams(v, relBaseRef.current, relDerivRef.current);
@@ -1202,11 +1153,6 @@ export default function DualMetronome() {
     setMetB((p) => ({ ...p, bpm: eff, timeSig: `${beatsB}/4`, subdivision:1 }));
     restartNow();
   }, [restartNow]);
-
-  const handlePolyMult = useCallback((m) => {
-    setPolyMult(m); polyMultRef.current = m;
-    applyPolyParams(polyBpmRef.current, polyBeatsARef.current, polyBeatsBRef.current);
-  }, [applyPolyParams]);
 
   const handlePolyBpm = useCallback((v) => {
     setPolyBpm(v);
@@ -1355,7 +1301,6 @@ export default function DualMetronome() {
             <PoliPanel
               bpmBase={relBpmBase} base={relBase} derivado={relDeriv}
               onBpmBase={handleRelBpmBase} onBase={handleRelBase} onDeriv={handleRelDeriv}
-              mult={relMult} onMult={handleRelMult}
             />
           </div>
           <SyncControls metA={metA} metB={metB} onChangeA={changeMetA} onChangeB={changeMetB} />
@@ -1375,7 +1320,6 @@ export default function DualMetronome() {
             <PolyMetriaPanel
               bpm={polyBpm} beatsA={polyBeatsA} beatsB={polyBeatsB}
               onBpm={handlePolyBpm} onBeatsA={handlePolyBeatsA} onBeatsB={handlePolyBeatsB}
-              mult={polyMult} onMult={handlePolyMult}
             />
           </div>
           <SyncControls metA={metA} metB={metB} onChangeA={changeMetA} onChangeB={changeMetB} />
