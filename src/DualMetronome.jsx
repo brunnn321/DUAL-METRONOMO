@@ -61,7 +61,7 @@ function NoteIcon({ kind, size = 22 }) {
   );
 }
 
-const BASE_VALUES     = [2, 3, 4, 5, 6, 7, 8];
+const BASE_VALUES     = [2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 15];
 const DERIVADO_VALUES = [2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 15];
 
 // params that require a scheduler restart to stay in sync
