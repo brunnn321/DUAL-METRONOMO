@@ -229,12 +229,12 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, mult, 
             {bpmBase}
           </div>
           <div style={{ flex:1, display:"flex", flexDirection:"column", gap:6 }}>
-            <input type="range" min={30} max={300} value={bpmBase}
+            <input type="range" min={1} max={600} value={bpmBase}
               onChange={(e) => onBpmBase(parseInt(e.target.value))}
               style={{ width:"100%", accentColor:"#ff6b4a" }} />
             <div style={{ display:"flex", gap:5 }}>
               {[-10,-1,+1,+10].map((d) => (
-                <button key={d} onClick={() => onBpmBase(Math.min(300, Math.max(30, bpmBase + d)))} style={{
+                <button key={d} onClick={() => onBpmBase(Math.min(600, Math.max(1, bpmBase + d)))} style={{
                   background:"#252830", border:"1px solid #ff6b4a33", borderRadius:5,
                   color:"#ff6b4a", fontFamily:"monospace", fontSize:11, padding:"4px 9px", cursor:"pointer",
                 }}>{d > 0 ? `+${d}` : d}</button>
@@ -360,7 +360,7 @@ function MetronomePanel({ color, state, onChange, onTiempoChange, running, onTog
       const ints = []; for (let i = 1; i < taps.length; i++) ints.push(taps[i] - taps[i-1]);
       const avg = ints.reduce((a, b) => a + b, 0) / ints.length;
       const v = Math.round(60000 / avg);
-      if (v >= 30 && v <= 300) onChange({ bpm: v, baseBpm: v });
+      if (v >= 1 && v <= 600) onChange({ bpm: v, baseBpm: v });
     }
   };
 
@@ -398,15 +398,15 @@ function MetronomePanel({ color, state, onChange, onTiempoChange, running, onTog
       </div>
 
       <div>
-        <input type="range" min={30} max={300} value={Math.round(bpm)}
+        <input type="range" min={1} max={600} value={Math.round(bpm)}
           onChange={(e) => { const v = parseInt(e.target.value); onChange({ bpm: v, baseBpm: v }); }}
           style={{ width:"100%", accentColor:accent, cursor:"pointer" }} />
-        <div style={{ display:"flex", justifyContent:"space-between", color:"#444", fontSize:9, fontFamily:"monospace" }}><span>30</span><span>300</span></div>
+        <div style={{ display:"flex", justifyContent:"space-between", color:"#444", fontSize:9, fontFamily:"monospace" }}><span>1</span><span>600</span></div>
       </div>
 
       <div style={{ display:"flex", gap:5, justifyContent:"center" }}>
         {[-10,-1,+1,+10].map((d) => (
-          <button key={d} onClick={() => { const v = Math.min(300, Math.max(30, Math.round(bpm)+d)); onChange({ bpm: v, baseBpm: v }); }} style={{ background:"#252830", border:`1px solid ${accent}33`, borderRadius:5, color:accent, fontFamily:"monospace", fontSize:12, padding:"5px 10px", cursor:"pointer" }}>{d > 0 ? `+${d}` : d}</button>
+          <button key={d} onClick={() => { const v = Math.min(600, Math.max(1, Math.round(bpm)+d)); onChange({ bpm: v, baseBpm: v }); }} style={{ background:"#252830", border:`1px solid ${accent}33`, borderRadius:5, color:accent, fontFamily:"monospace", fontSize:12, padding:"5px 10px", cursor:"pointer" }}>{d > 0 ? `+${d}` : d}</button>
         ))}
       </div>
 
@@ -439,7 +439,7 @@ function MetronomePanel({ color, state, onChange, onTiempoChange, running, onTog
         {[["×0.5",0.5],["×1",1],["×2",2]].map(([lbl, mult]) => {
           const target = Math.round(baseBpm * mult);
           const on = Math.round(bpm) === target;
-          const handleTiempo = () => (onTiempoChange ?? onChange)({ bpm: Math.min(300, Math.max(30, target)) });
+          const handleTiempo = () => (onTiempoChange ?? onChange)({ bpm: Math.min(600, Math.max(1, target)) });
           return (
             <button key={lbl} onClick={handleTiempo} style={{
               background: on ? accent : "#252830",
@@ -551,7 +551,7 @@ function ProgressivePractice({ onBpmChange, onActivate, running, onStatus }) {
         </button>
       </div>
       <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom: on ? 14 : 0 }}>
-        {[["BPM INICIO","bpmStart",30,280],["BPM MÁX","bpmMax",40,300],["+ BPM","increment",1,20],["SEG / PASO","intervalSec",10,600]].map(([lbl,k,mn,mx]) => (
+        {[["BPM INICIO","bpmStart",1,580],["BPM MÁX","bpmMax",2,600],["+ BPM","increment",1,20],["SEG / PASO","intervalSec",10,600]].map(([lbl,k,mn,mx]) => (
           <div key={k} style={{ display:"flex", flexDirection:"column", gap:3, minWidth:80 }}>
             <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>{lbl}</div>
             <input type="number" min={mn} max={mx} value={cfg[k]} onChange={(e) => set(k, Math.max(mn, parseInt(e.target.value)||mn))} disabled={on}
@@ -869,10 +869,10 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, mult,
         <div style={{ display:"flex", alignItems:"center", gap:16 }}>
           <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:52, fontWeight:700, color:"#4aff9a", lineHeight:1, minWidth:96 }}>{bpm}</div>
           <div style={{ flex:1, display:"flex", flexDirection:"column", gap:6 }}>
-            <input type="range" min={30} max={300} value={bpm} onChange={(e) => onBpm(parseInt(e.target.value))} style={{ width:"100%", accentColor:"#4aff9a" }} />
+            <input type="range" min={1} max={600} value={bpm} onChange={(e) => onBpm(parseInt(e.target.value))} style={{ width:"100%", accentColor:"#4aff9a" }} />
             <div style={{ display:"flex", gap:5 }}>
               {[-10,-1,+1,+10].map((d) => (
-                <button key={d} onClick={() => onBpm(Math.min(300, Math.max(30, bpm + d)))} style={{ background:"#252830", border:"1px solid #4aff9a33", borderRadius:5, color:"#4aff9a", fontFamily:"monospace", fontSize:11, padding:"4px 9px", cursor:"pointer" }}>{d > 0 ? `+${d}` : d}</button>
+                <button key={d} onClick={() => onBpm(Math.min(600, Math.max(1, bpm + d)))} style={{ background:"#252830", border:"1px solid #4aff9a33", borderRadius:5, color:"#4aff9a", fontFamily:"monospace", fontSize:11, padding:"4px 9px", cursor:"pointer" }}>{d > 0 ? `+${d}` : d}</button>
               ))}
             </div>
           </div>
@@ -1086,6 +1086,9 @@ export default function DualMetronome() {
     setMeasuresA(0); setMeasuresB(0);
   }, []);
   const startDual = useCallback(() => {
+    // defensive: never stack a second scheduler/context on top of a live one
+    clearInterval(schedRef.current); schedRef.current = null;
+    ctxRef.current?.close();
     const ctx = new AudioContext(); ctxRef.current = ctx;
     const t0  = ctx.currentTime + 0.1;
     nextARef.current = t0; nextBRef.current = t0;
@@ -1143,10 +1146,11 @@ export default function DualMetronome() {
   const applyPoliParams = useCallback((bpmBase, base, deriv) => {
     const eff  = bpmBase * relMultRef.current; // ×0.5 / ×1 / ×2
     const bpmB = eff * deriv / base;
-    metARef.current = { ...metARef.current, bpm: eff,  timeSig: `${base}/4` };
-    metBRef.current = { ...metBRef.current, bpm: bpmB, timeSig: `${deriv}/4` };
-    setMetA((p) => ({ ...p, bpm: eff,  timeSig: `${base}/4` }));
-    setMetB((p) => ({ ...p, bpm: bpmB, timeSig: `${deriv}/4` }));
+    // subdivision:1 — las FIGURAS de Dual Libre no aplican en este modo
+    metARef.current = { ...metARef.current, bpm: eff,  timeSig: `${base}/4`,  subdivision:1 };
+    metBRef.current = { ...metBRef.current, bpm: bpmB, timeSig: `${deriv}/4`, subdivision:1 };
+    setMetA((p) => ({ ...p, bpm: eff,  timeSig: `${base}/4`,  subdivision:1 }));
+    setMetB((p) => ({ ...p, bpm: bpmB, timeSig: `${deriv}/4`, subdivision:1 }));
     restartNow();
   }, [restartNow]);
 
@@ -1171,7 +1175,7 @@ export default function DualMetronome() {
       const ints = []; for (let i = 1; i < taps.length; i++) ints.push(taps[i] - taps[i-1]);
       const avg = ints.reduce((a, b) => a + b, 0) / ints.length;
       const v = Math.round(60000 / avg);
-      if (v >= 30 && v <= 300) handleRelBpmBase(v);
+      if (v >= 1 && v <= 600) handleRelBpmBase(v);
     }
   }, [handleRelBpmBase]);
 
@@ -1192,10 +1196,10 @@ export default function DualMetronome() {
   const applyPolyParams = useCallback((bpm, beatsA, beatsB) => {
     polyBpmRef.current = bpm; polyBeatsARef.current = beatsA; polyBeatsBRef.current = beatsB;
     const eff = bpm * polyMultRef.current; // ×0.5 / ×1 / ×2
-    metARef.current = { ...metARef.current, bpm: eff, timeSig: `${beatsA}/4` };
-    metBRef.current = { ...metBRef.current, bpm: eff, timeSig: `${beatsB}/4` };
-    setMetA((p) => ({ ...p, bpm: eff, timeSig: `${beatsA}/4` }));
-    setMetB((p) => ({ ...p, bpm: eff, timeSig: `${beatsB}/4` }));
+    metARef.current = { ...metARef.current, bpm: eff, timeSig: `${beatsA}/4`, subdivision:1 };
+    metBRef.current = { ...metBRef.current, bpm: eff, timeSig: `${beatsB}/4`, subdivision:1 };
+    setMetA((p) => ({ ...p, bpm: eff, timeSig: `${beatsA}/4`, subdivision:1 }));
+    setMetB((p) => ({ ...p, bpm: eff, timeSig: `${beatsB}/4`, subdivision:1 }));
     restartNow();
   }, [restartNow]);
 
@@ -1250,16 +1254,16 @@ export default function DualMetronome() {
     setMode(newMode); modeRef.current = newMode;
     if (newMode === "metrica") {
       const bpmB = relBpmBase * relDerivRef.current / relBaseRef.current;
-      metARef.current = { ...metARef.current, bpm: relBpmBase, timeSig: `${relBaseRef.current}/4` };
-      metBRef.current = { ...metBRef.current, bpm: bpmB,       timeSig: `${relDerivRef.current}/4` };
-      setMetA((p) => ({ ...p, bpm: relBpmBase, timeSig: `${relBaseRef.current}/4` }));
-      setMetB((p) => ({ ...p, bpm: bpmB,       timeSig: `${relDerivRef.current}/4` }));
+      metARef.current = { ...metARef.current, bpm: relBpmBase, timeSig: `${relBaseRef.current}/4`,  subdivision:1 };
+      metBRef.current = { ...metBRef.current, bpm: bpmB,       timeSig: `${relDerivRef.current}/4`, subdivision:1 };
+      setMetA((p) => ({ ...p, bpm: relBpmBase, timeSig: `${relBaseRef.current}/4`,  subdivision:1 }));
+      setMetB((p) => ({ ...p, bpm: bpmB,       timeSig: `${relDerivRef.current}/4`, subdivision:1 }));
     } else if (newMode === "polimetria") {
       const bpm = polyBpmRef.current;
-      metARef.current = { ...metARef.current, bpm, timeSig: `${polyBeatsARef.current}/4` };
-      metBRef.current = { ...metBRef.current, bpm, timeSig: `${polyBeatsBRef.current}/4` };
-      setMetA((p) => ({ ...p, bpm, timeSig: `${polyBeatsARef.current}/4` }));
-      setMetB((p) => ({ ...p, bpm, timeSig: `${polyBeatsBRef.current}/4` }));
+      metARef.current = { ...metARef.current, bpm, timeSig: `${polyBeatsARef.current}/4`, subdivision:1 };
+      metBRef.current = { ...metBRef.current, bpm, timeSig: `${polyBeatsBRef.current}/4`, subdivision:1 };
+      setMetA((p) => ({ ...p, bpm, timeSig: `${polyBeatsARef.current}/4`, subdivision:1 }));
+      setMetB((p) => ({ ...p, bpm, timeSig: `${polyBeatsBRef.current}/4`, subdivision:1 }));
     } else {
       // Dual Libre has no "compás" concept anymore — fix timeSig to a single
       // beat per measure so the shared circular visualizer stays consistent.
@@ -1298,7 +1302,7 @@ export default function DualMetronome() {
       const ints = []; for (let i = 1; i < taps.length; i++) ints.push(taps[i] - taps[i-1]);
       const avg = ints.reduce((a, b) => a + b, 0) / ints.length;
       const v = Math.round(60000 / avg);
-      if (v >= 30 && v <= 300) handlePolyBpm(v);
+      if (v >= 1 && v <= 600) handlePolyBpm(v);
     }
   }, [handlePolyBpm]);
 
