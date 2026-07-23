@@ -30,32 +30,33 @@ const FIGURES = [
   { value:13, kind:"sixteenth", num:13   }, // trecesillo
 ];
 
-// hand-drawn note icons (SVG, currentColor) — consistent on every OS/font
-function NoteIcon({ kind, size = 16 }) {
+// hand-drawn note icons (SVG paths, currentColor) — consistent on every OS/font.
+// Beams are slightly slanted like engraved notation.
+function NoteIcon({ kind, size = 22 }) {
   if (kind === "quarter") return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill="currentColor">
-      <ellipse cx="8.5" cy="15.8" rx="3.4" ry="2.5" transform="rotate(-20 8.5 15.8)" />
-      <rect x="10.9" y="3" width="1.5" height="13" rx="0.7" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <ellipse cx="10.6" cy="18.2" rx="4.1" ry="3" transform="rotate(-21 10.6 18.2)" />
+      <path d="M13.9 3.6 h1.5 v14.4 h-1.5 z" />
     </svg>
   );
   if (kind === "eighth") return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill="currentColor">
-      <ellipse cx="4.6" cy="16" rx="2.7" ry="2.1" transform="rotate(-20 4.6 16)" />
-      <ellipse cx="13.8" cy="16" rx="2.7" ry="2.1" transform="rotate(-20 13.8 16)" />
-      <rect x="6.5" y="4" width="1.3" height="12" />
-      <rect x="15.7" y="4" width="1.3" height="12" />
-      <rect x="6.5" y="4" width="10.5" height="2.6" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <ellipse cx="5.4" cy="19.4" rx="3.2" ry="2.4" transform="rotate(-21 5.4 19.4)" />
+      <ellipse cx="17"  cy="18.2" rx="3.2" ry="2.4" transform="rotate(-21 17 18.2)" />
+      <path d="M7.6 6.4 h1.4 v13 h-1.4 z" />
+      <path d="M19.2 5.2 h1.4 v13 h-1.4 z" />
+      <path d="M7.6 6.4 L20.6 5.2 L20.6 8.3 L7.6 9.5 Z" />
     </svg>
   );
-  // sixteenth — double beam
+  // sixteenth — double slanted beam
   return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill="currentColor">
-      <ellipse cx="4.6" cy="16" rx="2.7" ry="2.1" transform="rotate(-20 4.6 16)" />
-      <ellipse cx="13.8" cy="16" rx="2.7" ry="2.1" transform="rotate(-20 13.8 16)" />
-      <rect x="6.5" y="3" width="1.3" height="13" />
-      <rect x="15.7" y="3" width="1.3" height="13" />
-      <rect x="6.5" y="3" width="10.5" height="2.2" />
-      <rect x="6.5" y="7.2" width="10.5" height="2.2" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <ellipse cx="5.4" cy="19.4" rx="3.2" ry="2.4" transform="rotate(-21 5.4 19.4)" />
+      <ellipse cx="17"  cy="18.2" rx="3.2" ry="2.4" transform="rotate(-21 17 18.2)" />
+      <path d="M7.6 4.6 h1.4 v14.8 h-1.4 z" />
+      <path d="M19.2 3.4 h1.4 v14.8 h-1.4 z" />
+      <path d="M7.6 4.6 L20.6 3.4 L20.6 5.9 L7.6 7.1 Z" />
+      <path d="M7.6 9 L20.6 7.8 L20.6 10.3 L7.6 11.5 Z" />
     </svg>
   );
 }
@@ -102,7 +103,7 @@ function synthClick(ctx, time, soundKey, volume, pan = 0) {
 function ModeSelector({ mode, setMode }) {
   return (
     <div style={{ display:"flex", background:"#1a1c22", borderRadius:8, padding:3, maxWidth:520, margin:"0 auto", gap:2 }}>
-      {[["metrica","DUAL SINC","#a78bfa"],["libre","DUAL LIBRE","#ffd04a"],["polimetria","POLIMETRÍA","#4aff9a"]].map(([k, lbl, color]) => {
+      {[["metrica","DUAL SINC","#a78bfa"],["libre","DUAL LIBRE","#ffd04a"],["polimetria","DUAL POLY","#4aff9a"]].map(([k, lbl, color]) => {
         const on = mode === k;
         return (
           <button key={k} onClick={() => setMode(k)} style={{
@@ -209,7 +210,7 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
 }
 
 // ─── polimetría panel ─────────────────────────────────────────────────────────
-function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
+function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, mult, onMult }) {
   const ratio  = `${derivado}:${base}`;
   const bpmB   = bpmBase * derivado / base;
   const fmtBpm = (v) => Number.isInteger(v) ? v : v.toFixed(2);
@@ -242,6 +243,8 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
           </div>
         </div>
       </div>
+
+      <MultButtons mult={mult} onMult={onMult} accent="#ff6b4a" />
 
       {/* selectors */}
       <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
@@ -304,6 +307,26 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
   );
 }
 
+// ─── tempo multiplier buttons (×0.5 / ×1 / ×2) ────────────────────────────────
+function MultButtons({ mult, onMult, accent }) {
+  return (
+    <div style={{ display:"flex", gap:3 }}>
+      {[0.5, 1, 2].map((m) => {
+        const on = mult === m;
+        return (
+          <button key={m} onClick={() => onMult(m)} style={{
+            background: on ? accent : "#252830",
+            border:`1px solid ${on ? accent : "#3a3d47"}`,
+            borderRadius:4, color: on ? "#15171c" : "#666",
+            fontFamily:"'JetBrains Mono',monospace", fontSize:9, fontWeight: on ? 700 : 400,
+            padding:"2px 8px", cursor:"pointer", transition:"all 0.1s",
+          }}>×{m}</button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── sound select (dropdown) ──────────────────────────────────────────────────
 function SoundSelect({ label, value, onChange, accent }) {
   return (
@@ -324,6 +347,7 @@ function SoundSelect({ label, value, onChange, accent }) {
 function MetronomePanel({ color, state, onChange, onTiempoChange, running, onToggle, measures }) {
   const { bpm, volume, muted, subTick, strongSound, weakSound, subdivision } = state;
   const baseBpm = state.baseBpm ?? bpm;
+  const [soundOpen, setSoundOpen] = useState(false);
   const tapRef = useRef([]);
   const accent    = color === "A" ? "#ff6b4a" : "#4ad9ff";
   const dimAccent = color === "A" ? "#6a2a18" : "#174d5e";
@@ -349,17 +373,16 @@ function MetronomePanel({ color, state, onChange, onTiempoChange, running, onTog
       flex:1, minWidth:270, transition:"border-color 0.25s",
     }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end" }}>
-        <button onClick={onToggle} style={{
+        <button onClick={onToggle} title={running ? "Detener" : "Reproducir"} style={{
           background: running ? "#2a1010" : "#0d2616",
           border:`1px solid ${running ? "#ff4a4a" : "#4aff7a"}`,
-          borderRadius:6, padding:"5px 14px", cursor:"pointer",
-          display:"flex", alignItems:"center", gap:6,
-          fontFamily:"monospace", fontSize:11, fontWeight:700,
+          borderRadius:8, width:38, height:32, cursor:"pointer",
+          display:"flex", alignItems:"center", justifyContent:"center",
           color: running ? "#ff4a4a" : "#4aff7a",
           boxShadow: running ? "none" : "0 0 10px #4aff7a33",
           transition:"all 0.15s",
         }}>
-          {running ? <Square size={11} /> : <Play size={11} />}{running ? "STOP" : "PLAY"}
+          {running ? <Square size={13} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
         </button>
       </div>
 
@@ -395,11 +418,11 @@ function MetronomePanel({ color, state, onChange, onTiempoChange, running, onTog
           return (
             <button key={value} onClick={() => onChange({ subdivision: value })} style={{
               background: on ? accent : "#252830", border:`1px solid ${on ? accent : "#3a3d47"}`,
-              borderRadius:5, color: on ? "#15171c" : "#777", cursor:"pointer",
+              borderRadius:7, color: on ? "#15171c" : "#888", cursor:"pointer",
               display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end",
-              padding:"2px 9px", minWidth:34, lineHeight:1, gap:1,
+              width:44, height:46, padding:"3px 0 4px", lineHeight:1, gap:1, boxSizing:"border-box",
             }}>
-              <span style={{ fontSize:8, height:9, fontFamily:"monospace", fontWeight:700 }}>{num ?? ""}</span>
+              <span style={{ fontSize:9, height:10, fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>{num ?? ""}</span>
               <NoteIcon kind={kind} />
             </button>
           );
@@ -412,36 +435,42 @@ function MetronomePanel({ color, state, onChange, onTiempoChange, running, onTog
         ))}
       </div>
 
-      <div style={{ borderTop:`1px solid ${accent}1a`, paddingTop:12, display:"flex", flexDirection:"column", gap:8 }}>
-        <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-          <SoundSelect label="FUERTE" value={strongSound} onChange={(v) => onChange({ strongSound:v })} accent={accent} />
-          <SoundSelect label="DÉBIL"  value={weakSound}   onChange={(v) => onChange({ weakSound:v })}   accent={accent} />
-        </div>
-        <div>
-          <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:5 }}>TIEMPO</div>
-          <div style={{ display:"flex", gap:4 }}>
-            {[["HALF TIME",0.5],["NORMAL",1],["DOUBLE TIME",2]].map(([lbl, mult]) => {
-              const target = Math.round(baseBpm * mult);
-              const on = Math.round(bpm) === target;
-              const handleTiempo = () => (onTiempoChange ?? onChange)({ bpm: Math.min(300, Math.max(30, target)) });
-              return (
-                <button key={lbl} onClick={handleTiempo} style={{
-                  flex:1, background: on ? accent : "#252830",
-                  border:`1px solid ${on ? accent : "#3a3d47"}`,
-                  borderRadius:4, color: on ? "#15171c" : "#666",
-                  fontFamily:"monospace", fontSize:9, fontWeight: on ? 700 : 400,
-                  padding:"5px 4px", cursor:"pointer", transition:"all 0.1s",
-                }}>{lbl}</button>
-              );
-            })}
-          </div>
-        </div>
+      <div style={{ display:"flex", gap:3, justifyContent:"center" }}>
+        {[["×0.5",0.5],["×1",1],["×2",2]].map(([lbl, mult]) => {
+          const target = Math.round(baseBpm * mult);
+          const on = Math.round(bpm) === target;
+          const handleTiempo = () => (onTiempoChange ?? onChange)({ bpm: Math.min(300, Math.max(30, target)) });
+          return (
+            <button key={lbl} onClick={handleTiempo} style={{
+              background: on ? accent : "#252830",
+              border:`1px solid ${on ? accent : "#3a3d47"}`,
+              borderRadius:4, color: on ? "#15171c" : "#666",
+              fontFamily:"'JetBrains Mono',monospace", fontSize:9, fontWeight: on ? 700 : 400,
+              padding:"2px 8px", cursor:"pointer", transition:"all 0.1s",
+            }}>{lbl}</button>
+          );
+        })}
       </div>
 
-      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-        <button onClick={() => onChange({ muted:!muted })} style={{ background:"none", border:"none", cursor:"pointer", color: muted ? "#333" : accent, padding:2 }}>{muted ? <VolumeX size={15} /> : <Volume2 size={15} />}</button>
-        <input type="range" min={0} max={1} step={0.01} value={volume} onChange={(e) => onChange({ volume: parseFloat(e.target.value) })} style={{ flex:1, accentColor:accent }} disabled={muted} />
-        <span style={{ color:"#444", fontSize:9, fontFamily:"monospace", width:26, textAlign:"right" }}>{Math.round(volume*100)}</span>
+      <div style={{ borderTop:`1px solid ${accent}1a` }}>
+        <button onClick={() => setSoundOpen((o) => !o)} style={{
+          width:"100%", background:"none", border:"none", cursor:"pointer",
+          display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0 2px",
+        }}>
+          <span style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1 }}>SONIDO Y VOLUMEN</span>
+          <ChevronRight size={12} color="#555" style={{ transform: soundOpen ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
+        </button>
+        <div style={{ display: soundOpen ? "flex" : "none", flexDirection:"column", gap:8, paddingTop:8 }}>
+          <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+            <SoundSelect label="FUERTE" value={strongSound} onChange={(v) => onChange({ strongSound:v })} accent={accent} />
+            <SoundSelect label="DÉBIL"  value={weakSound}   onChange={(v) => onChange({ weakSound:v })}   accent={accent} />
+          </div>
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <button onClick={() => onChange({ muted:!muted })} style={{ background:"none", border:"none", cursor:"pointer", color: muted ? "#333" : accent, padding:2 }}>{muted ? <VolumeX size={15} /> : <Volume2 size={15} />}</button>
+            <input type="range" min={0} max={1} step={0.01} value={volume} onChange={(e) => onChange({ volume: parseFloat(e.target.value) })} style={{ flex:1, accentColor:accent }} disabled={muted} />
+            <span style={{ color:"#444", fontSize:9, fontFamily:"monospace", width:26, textAlign:"right" }}>{Math.round(volume*100)}</span>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -450,25 +479,20 @@ function MetronomePanel({ color, state, onChange, onTiempoChange, running, onTog
 // ─── dual switch ──────────────────────────────────────────────────────────────
 function DualSwitch({ on, onToggle }) {
   return (
-    <button onClick={onToggle} style={{
+    <button onClick={onToggle} title={on ? "Detener" : "Iniciar"} style={{
       position:"fixed", bottom:24, left:"50%", transform:"translateX(-50%)", zIndex:1001,
-      display:"flex", alignItems:"center", gap:12,
+      display:"flex", alignItems:"center", justifyContent:"center",
+      width:64, height:64, borderRadius:"50%",
       background: on ? "#2a1010" : "#0d2616",
       border:`2px solid ${on ? "#ff4a4a" : "#4aff7a"}`,
-      borderRadius:12, padding:"14px 36px",
       cursor:"pointer", userSelect:"none",
       boxShadow: on ? "0 0 20px #ff4a4a44" : "0 0 24px #4aff7a55",
       transition:"all 0.2s",
     }}>
       {on
-        ? <Square size={22} color="#ff4a4a" />
-        : <Play  size={22} color="#4aff7a" />
+        ? <Square size={26} color="#ff4a4a" fill="#ff4a4a" />
+        : <Play  size={28} color="#4aff7a" fill="#4aff7a" style={{ marginLeft:3 }} />
       }
-      <span style={{
-        fontFamily:"'JetBrains Mono',monospace", fontSize:16, fontWeight:700, letterSpacing:2,
-        color: on ? "#ff4a4a" : "#4aff7a",
-        transition:"color 0.2s",
-      }}>{on ? "DETENER" : "INICIAR"}</span>
     </button>
   );
 }
@@ -783,9 +807,17 @@ function TapTempoButton({ onTap }) {
 
 // ─── sync volume + sound editor (DUAL SINC) ───────────────────────────────────
 function SyncControls({ metA, metB, onChangeA, onChangeB }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div style={{ maxWidth:680, margin:"0 auto 18px", background:"#1e2028", borderRadius:12, padding:"16px 20px", display:"flex", flexDirection:"column", gap:16 }}>
-      <div style={{ color:"#444", fontSize:9, fontFamily:"monospace", letterSpacing:2 }}>SONIDO Y VOLUMEN</div>
+    <div style={{ maxWidth:680, margin:"0 auto 18px", background:"#1e2028", borderRadius:12, border:"1px solid #252830" }}>
+      <button onClick={() => setOpen((o) => !o)} style={{
+        width:"100%", background:"none", border:"none", cursor:"pointer",
+        display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 20px",
+      }}>
+        <span style={{ color:"#555", fontSize:10, fontFamily:"monospace", letterSpacing:2 }}>SONIDO Y VOLUMEN</span>
+        <ChevronRight size={14} color="#555" style={{ transform: open ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
+      </button>
+      <div style={{ display: open ? "flex" : "none", flexDirection:"column", gap:16, padding:"0 20px 16px" }}>
 
       {/* volume row */}
       <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
@@ -821,12 +853,13 @@ function SyncControls({ metA, metB, onChangeA, onChangeB }) {
           </div>
         ))}
       </div>
+      </div>
     </div>
   );
 }
 
 // ─── polimetría panel ─────────────────────────────────────────────────────────
-function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB }) {
+function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, mult, onMult }) {
   const lcmAB = lcm(beatsA, beatsB);
   return (
     <div style={{ background:"#1e2028", borderRadius:12, padding:"20px 24px", maxWidth:680, margin:"0 auto", display:"flex", flexDirection:"column", gap:18 }}>
@@ -845,6 +878,8 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB }) {
           </div>
         </div>
       </div>
+
+      <MultButtons mult={mult} onMult={onMult} accent="#4aff9a" />
 
       {/* selectores de tiempos */}
       <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
@@ -885,9 +920,7 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB }) {
           <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1, marginBottom:4 }}>COINCIDENCIA</div>
           <div style={{ color:"#666", fontFamily:"monospace", fontSize:12, lineHeight:1.8 }}>
             Los <span style={{ color:"#eee" }}>tiempo&nbsp;1</span> coinciden cada{" "}
-            <span style={{ color:"#4aff9a", fontWeight:700 }}>{lcmAB}</span> pulsos —{" "}
-            A completa <span style={{ color:"#ff6b4a", fontWeight:700 }}>{lcmAB / beatsA}</span> ciclos,{" "}
-            B completa <span style={{ color:"#4ad9ff", fontWeight:700 }}>{lcmAB / beatsB}</span> ciclos
+            <span style={{ color:"#4aff9a", fontWeight:700 }}>{lcmAB}</span> pulsos
           </div>
         </div>
       </div>
@@ -911,6 +944,8 @@ export default function DualMetronome() {
   const [relBpmBase, setRelBpmBase] = useState(90);
   const relBaseRef  = useRef(4);
   const relDerivRef = useRef(5);
+  const [relMult, setRelMult] = useState(1);
+  const relMultRef = useRef(1);
 
   // polimetría (tercer modo) params
   const [polyBpm,    setPolyBpm]    = useState(90);
@@ -919,6 +954,8 @@ export default function DualMetronome() {
   const polyBpmRef    = useRef(90);
   const polyBeatsARef = useRef(4);
   const polyBeatsBRef = useRef(3);
+  const [polyMult, setPolyMult] = useState(1);
+  const polyMultRef = useRef(1);
 
   // shared audio state
   const [runningA, setRunningA] = useState(false);
@@ -1104,13 +1141,20 @@ export default function DualMetronome() {
   // ── polimetría param handlers ──────────────────────────────────────────────
   // Update both refs and state, then restart so there is zero phase drift.
   const applyPoliParams = useCallback((bpmBase, base, deriv) => {
-    const bpmB = bpmBase * deriv / base;
-    metARef.current = { ...metARef.current, bpm: bpmBase, timeSig: `${base}/4` };
-    metBRef.current = { ...metBRef.current, bpm: bpmB,    timeSig: `${deriv}/4` };
-    setMetA((p) => ({ ...p, bpm: bpmBase, timeSig: `${base}/4` }));
-    setMetB((p) => ({ ...p, bpm: bpmB,    timeSig: `${deriv}/4` }));
+    const eff  = bpmBase * relMultRef.current; // ×0.5 / ×1 / ×2
+    const bpmB = eff * deriv / base;
+    metARef.current = { ...metARef.current, bpm: eff,  timeSig: `${base}/4` };
+    metBRef.current = { ...metBRef.current, bpm: bpmB, timeSig: `${deriv}/4` };
+    setMetA((p) => ({ ...p, bpm: eff,  timeSig: `${base}/4` }));
+    setMetB((p) => ({ ...p, bpm: bpmB, timeSig: `${deriv}/4` }));
     restartNow();
   }, [restartNow]);
+
+  const handleRelMult = useCallback((m) => {
+    setRelMult(m); relMultRef.current = m;
+    applyPoliParams(relBpmBase, relBaseRef.current, relDerivRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyPoliParams, relBpmBase]);
 
   const handleRelBpmBase = useCallback((v) => {
     setRelBpmBase(v);
@@ -1147,12 +1191,18 @@ export default function DualMetronome() {
   // ── polimetría handlers ────────────────────────────────────────────────────
   const applyPolyParams = useCallback((bpm, beatsA, beatsB) => {
     polyBpmRef.current = bpm; polyBeatsARef.current = beatsA; polyBeatsBRef.current = beatsB;
-    metARef.current = { ...metARef.current, bpm, timeSig: `${beatsA}/4` };
-    metBRef.current = { ...metBRef.current, bpm, timeSig: `${beatsB}/4` };
-    setMetA((p) => ({ ...p, bpm, timeSig: `${beatsA}/4` }));
-    setMetB((p) => ({ ...p, bpm, timeSig: `${beatsB}/4` }));
+    const eff = bpm * polyMultRef.current; // ×0.5 / ×1 / ×2
+    metARef.current = { ...metARef.current, bpm: eff, timeSig: `${beatsA}/4` };
+    metBRef.current = { ...metBRef.current, bpm: eff, timeSig: `${beatsB}/4` };
+    setMetA((p) => ({ ...p, bpm: eff, timeSig: `${beatsA}/4` }));
+    setMetB((p) => ({ ...p, bpm: eff, timeSig: `${beatsB}/4` }));
     restartNow();
   }, [restartNow]);
+
+  const handlePolyMult = useCallback((m) => {
+    setPolyMult(m); polyMultRef.current = m;
+    applyPolyParams(polyBpmRef.current, polyBeatsARef.current, polyBeatsBRef.current);
+  }, [applyPolyParams]);
 
   const handlePolyBpm = useCallback((v) => {
     setPolyBpm(v);
@@ -1301,6 +1351,7 @@ export default function DualMetronome() {
             <PoliPanel
               bpmBase={relBpmBase} base={relBase} derivado={relDeriv}
               onBpmBase={handleRelBpmBase} onBase={handleRelBase} onDeriv={handleRelDeriv}
+              mult={relMult} onMult={handleRelMult}
             />
           </div>
           <SyncControls metA={metA} metB={metB} onChangeA={changeMetA} onChangeB={changeMetB} />
@@ -1320,8 +1371,10 @@ export default function DualMetronome() {
             <PolyMetriaPanel
               bpm={polyBpm} beatsA={polyBeatsA} beatsB={polyBeatsB}
               onBpm={handlePolyBpm} onBeatsA={handlePolyBeatsA} onBeatsB={handlePolyBeatsB}
+              mult={polyMult} onMult={handlePolyMult}
             />
           </div>
+          <SyncControls metA={metA} metB={metB} onChangeA={changeMetA} onChangeB={changeMetB} />
           <div style={{ maxWidth:680, margin:"0 auto 90px" }}>
             <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} onFinish={hardStop} status={practiceStatus} onStatus={updatePracticeStatus} />
           </div>
