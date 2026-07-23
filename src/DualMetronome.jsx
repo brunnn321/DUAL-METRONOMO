@@ -763,11 +763,11 @@ function BeatLights({ metA, metB, runningA, runningB, measuresA, measuresB, enab
     <>
       <div style={halfStyle(onA, "#ff6b4a", true)}>
         <span style={numStyle(onA, "#ff6b4a", runningA)}>{dispA}<span style={{ fontSize:"0.35em" }}>/{totalA}</span></span>
-        <span style={subStyle(onA, "#ff6b4a", runningA)}>MET A · BAR {String(measuresA).padStart(3,"0")}</span>
+        <span style={subStyle(onA, "#ff6b4a", runningA)}>BAR {String(measuresA).padStart(3,"0")}</span>
       </div>
       <div style={halfStyle(onB, "#4ad9ff", false)}>
         <span style={numStyle(onB, "#4ad9ff", runningB)}>{dispB}<span style={{ fontSize:"0.35em" }}>/{totalB}</span></span>
-        <span style={subStyle(onB, "#4ad9ff", runningB)}>MET B · BAR {String(measuresB).padStart(3,"0")}</span>
+        <span style={subStyle(onB, "#4ad9ff", runningB)}>BAR {String(measuresB).padStart(3,"0")}</span>
       </div>
     </>
   );
