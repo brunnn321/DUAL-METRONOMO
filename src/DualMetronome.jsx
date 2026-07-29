@@ -205,9 +205,9 @@ function CircularVisualizer({
     }}>
       <div style={{ position:"relative" }}>
         <button onClick={() => setVizStyle((v) => (v === "rings" ? "necklace" : "rings"))} title="Cambiar estilo de visualizador" style={{
-          position:"absolute", top:2, right:2, zIndex:2,
-          width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center",
-          background:"#ffd04a1a", border:"1px solid #ffd04a", borderRadius:"50%",
+          position:"fixed", top:16, left:16, zIndex:1000,
+          width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center",
+          background:"#ffd04a1a", border:"1px solid #ffd04a", borderRadius:10,
           color:"#ffd04a", cursor:"pointer",
           boxShadow:"0 0 10px #ffd04a44",
         }}>
@@ -447,17 +447,6 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures })
         </button>
       </div>
 
-      <div style={{ display:"flex", alignItems:"flex-end", gap:12 }}>
-        <div style={{ flex:1, textAlign:"center" }}>
-          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:64, fontWeight:700, color:accent, lineHeight:1, letterSpacing:-2, textShadow: running ? `0 0 24px ${accent}55` : "none", transition:"text-shadow 0.3s" }}>{Math.round(bpm)}</div>
-          <div style={{ color:"#444", fontSize:10, marginTop:2, fontFamily:"monospace" }}>BPM</div>
-        </div>
-        <div style={{ background:"#15171c", border:`1px solid ${accent}2a`, borderRadius:6, padding:"6px 10px", textAlign:"center", minWidth:58 }}>
-          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:20, fontWeight:700, color: running ? accent : "#333", lineHeight:1, transition:"color 0.3s" }}>{String(measures).padStart(3,"0")}</div>
-          <div style={{ color:"#444", fontSize:8, marginTop:3, fontFamily:"monospace", letterSpacing:1 }}>BAR</div>
-        </div>
-      </div>
-
       <div style={{ borderTop:`1px solid ${accent}1a` }}>
         <button onClick={() => setSettingsOpen((o) => !o)} style={{
           width:"100%", background:"none", border:"none", cursor:"pointer",
@@ -468,20 +457,26 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures })
         </button>
       </div>
       <div style={{ display: settingsOpen ? "flex" : "none", flexDirection:"column", gap:14 }}>
-      <div>
-        <input type="range" min={1} max={600} value={Math.round(bpm)}
-          onChange={(e) => { const v = parseInt(e.target.value); onChange({ bpm: v, baseBpm: v }); }}
-          style={{ width:"100%", accentColor:accent, cursor:"pointer" }} />
-        <div style={{ display:"flex", justifyContent:"space-between", color:"#444", fontSize:9, fontFamily:"monospace" }}><span>1</span><span>600</span></div>
+      <div style={{ display:"flex", alignItems:"center", gap:16 }}>
+        <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:52, fontWeight:700, color:accent, lineHeight:1, minWidth:96, textAlign:"center" }}>
+          {Math.round(bpm)}
+        </div>
+        <div style={{ flex:1, display:"flex", flexDirection:"column", gap:6 }}>
+          <input type="range" min={1} max={600} value={Math.round(bpm)}
+            onChange={(e) => { const v = parseInt(e.target.value); onChange({ bpm: v, baseBpm: v }); }}
+            style={{ width:"100%", accentColor:accent, cursor:"pointer" }} />
+          <button onClick={handleTap} style={{ background:`${accent}14`, border:`1px solid ${accent}44`, borderRadius:7, color:accent, fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1 }}>TAP TEMPO</button>
+          <div style={{ display:"flex", gap:5 }}>
+            {[-10,-1,+1,+10].map((d) => (
+              <button key={d} onClick={() => { const v = Math.min(600, Math.max(1, Math.round(bpm)+d)); onChange({ bpm: v, baseBpm: v }); }} style={{ background:"#252830", border:`1px solid ${accent}33`, borderRadius:5, color:accent, fontFamily:"monospace", fontSize:12, padding:"5px 10px", cursor:"pointer" }}>{d > 0 ? `+${d}` : d}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{ background:"#15171c", border:`1px solid ${accent}2a`, borderRadius:6, padding:"6px 10px", textAlign:"center", minWidth:58 }}>
+          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:20, fontWeight:700, color: running ? accent : "#333", lineHeight:1, transition:"color 0.3s" }}>{String(measures).padStart(3,"0")}</div>
+          <div style={{ color:"#444", fontSize:8, marginTop:3, fontFamily:"monospace", letterSpacing:1 }}>BAR</div>
+        </div>
       </div>
-
-      <div style={{ display:"flex", gap:5, justifyContent:"center" }}>
-        {[-10,-1,+1,+10].map((d) => (
-          <button key={d} onClick={() => { const v = Math.min(600, Math.max(1, Math.round(bpm)+d)); onChange({ bpm: v, baseBpm: v }); }} style={{ background:"#252830", border:`1px solid ${accent}33`, borderRadius:5, color:accent, fontFamily:"monospace", fontSize:12, padding:"5px 10px", cursor:"pointer" }}>{d > 0 ? `+${d}` : d}</button>
-        ))}
-      </div>
-
-      <button onClick={handleTap} style={{ background:`${accent}14`, border:`1px solid ${accent}44`, borderRadius:7, color:accent, fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1 }}>TAP TEMPO</button>
 
       <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
         {FIGURES.map(({ value }) => {
@@ -825,11 +820,11 @@ function BeatLights({ metA, metB, runningA, runningB, measuresA, measuresB, enab
   );
 }
 
-// ─── flash toggle button (top-left) ───────────────────────────────────────────
+// ─── flash toggle button (top-right) ──────────────────────────────────────────
 function FlashToggle({ on, onToggle }) {
   return (
     <button onClick={onToggle} title={on ? "Desactivar destello de pantalla" : "Activar destello de pantalla"} style={{
-      position:"fixed", top:16, left:16, zIndex:1000,
+      position:"fixed", top:16, right:16, zIndex:1000,
       display:"flex", alignItems:"center", justifyContent:"center",
       width:40, height:40, borderRadius:10,
       background: on ? "#ffd04a1a" : "#1e2028",
