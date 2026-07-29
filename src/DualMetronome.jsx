@@ -16,63 +16,10 @@ const SOUNDS = [
 ];
 
 // figures: how each beat (pulso) gets subdivided — Dual Libre only
-// kind = note icon, num = small tuplet number drawn ABOVE the note (like a tresillo in scores)
 const FIGURES = [
-  { value:1,  kind:"quarter",   num:null }, // pulso
-  { value:2,  kind:"eighth",    num:null }, // corcheas
-  { value:3,  kind:"eighth",    num:3    }, // tresillo
-  { value:4,  kind:"sixteenth", num:null }, // semicorcheas
-  { value:5,  kind:"sixteenth", num:5    }, // quintillo
-  { value:6,  kind:"sixteenth", num:6    }, // seisillo
-  { value:7,  kind:"sixteenth", num:7    }, // sietesillo
-  { value:9,  kind:"sixteenth", num:9    }, // nuevesillo
-  { value:11, kind:"sixteenth", num:11   }, // oncesillo
-  { value:13, kind:"sixteenth", num:13   }, // trecesillo
+  { value:1 }, { value:2 }, { value:3 }, { value:4 }, { value:5 },
+  { value:6 }, { value:7 }, { value:9 }, { value:11 }, { value:13 },
 ];
-
-// real music-notation glyphs via the Bravura font (SMuFL standard, SIL Open
-// Font License) — same glyphs used by professional notation software.
-const SMUFL = {
-  quarter:   "", // noteQuarterUp
-  eighth:    "", // note8thUp
-  sixteenth: "", // note16thUp
-};
-const TUPLET_DIGIT = ""; // tuplet0 — digits 0-9 are sequential from here
-
-// Glyph bounding boxes from Bravura's own metadata (staff-space units, 1 staff
-// space = 0.25 em by SMuFL convention) — used to place each glyph's baseline
-// so its *visual* center lands exactly in the middle of the SVG, regardless
-// of the font's em-box whitespace (a plain <span> can't be centered this way).
-const NOTE_NE_Y = 3.5, NOTE_SW_Y = -0.56;   // noteQuarterUp/8thUp/16thUp (near-identical)
-const DIGIT_NE_Y = 1.5, DIGIT_SW_Y = -0.03; // tuplet0-9
-
-function NoteIcon({ kind, num, width = 32, height = 34 }) {
-  const digits = num != null
-    ? String(num).split("").map((d) => String.fromCodePoint(TUPLET_DIGIT.codePointAt(0) + Number(d))).join("")
-    : null;
-
-  const numBoxH  = digits ? 13 : 0;
-  const gap      = digits ? 2 : 0;
-  const noteBoxH = height - numBoxH - gap;
-  const noteBoxY = numBoxH + gap;
-
-  const noteEmH   = (NOTE_NE_Y - NOTE_SW_Y) * 0.25;
-  const noteFont  = noteBoxH / noteEmH;
-  const noteBase  = noteBoxY + noteBoxH / 2 + noteFont * 0.25 * (NOTE_NE_Y + NOTE_SW_Y) / 2;
-
-  const digitEmH  = (DIGIT_NE_Y - DIGIT_SW_Y) * 0.25;
-  const digitFont = numBoxH / digitEmH;
-  const digitBase = numBoxH / 2 + digitFont * 0.25 * (DIGIT_NE_Y + DIGIT_SW_Y) / 2;
-
-  return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-      {digits && (
-        <text x={width / 2} y={digitBase} textAnchor="middle" fontFamily="Bravura" fontSize={digitFont} fill="currentColor">{digits}</text>
-      )}
-      <text x={width / 2} y={noteBase} textAnchor="middle" fontFamily="Bravura" fontSize={noteFont} fill="currentColor">{SMUFL[kind]}</text>
-    </svg>
-  );
-}
 
 const BASE_VALUES     = [2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 15];
 const DERIVADO_VALUES = [2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 15];
@@ -404,17 +351,15 @@ function MetronomePanel({ color, state, onChange, onTiempoChange, running, onTog
       <button onClick={handleTap} style={{ background:`${accent}14`, border:`1px solid ${accent}44`, borderRadius:7, color:accent, fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1 }}>TAP TEMPO</button>
 
       <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-        {FIGURES.map(({ value, kind, num }) => {
+        {FIGURES.map(({ value }) => {
           const on = subdivision === value;
           return (
             <button key={value} onClick={() => onChange({ subdivision: value })} style={{
               background: on ? accent : "#252830", border:`1px solid ${on ? accent : "#3a3d47"}`,
-              borderRadius:7, color: on ? "#15171c" : "#888", cursor:"pointer",
-              display:"flex", alignItems:"center", justifyContent:"center",
-              width:44, height:46, padding:0, boxSizing:"border-box",
-            }}>
-              <NoteIcon kind={kind} num={num} />
-            </button>
+              borderRadius:6, color: on ? "#15171c" : "#666",
+              fontFamily:"'JetBrains Mono',monospace", fontSize:15, fontWeight: on ? 700 : 400,
+              padding:"6px 13px", cursor:"pointer", minWidth:38, textAlign:"center",
+            }}>{value}</button>
           );
         })}
       </div>
