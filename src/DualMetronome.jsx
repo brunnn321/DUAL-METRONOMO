@@ -101,24 +101,31 @@ function pointAtT(points, t) {
   return [x0 + (x1 - x0) * frac, y0 + (y1 - y0) * frac];
 }
 
-function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showSubtitle, showMcm = true }) {
+function CircularVisualizer({
+  metA, metB, runningA, runningB, centerLabel, showSubtitle, showMcm = true,
+  // overrides let Dual Libre drive the visual off its subdivision/subTick
+  // instead of timeSig/beat (which are always 1 in that mode)
+  totalAOverride, totalBOverride, beatAOverride, beatBOverride, durAOverride, durBOverride,
+}) {
   const [coincide, setCoincide] = useState(false);
   const tRef = useRef(null);
-  const totalA = beatsPerMeasure(metA.timeSig);
-  const totalB = beatsPerMeasure(metB.timeSig);
+  const totalA = totalAOverride ?? beatsPerMeasure(metA.timeSig);
+  const totalB = totalBOverride ?? beatsPerMeasure(metB.timeSig);
+  const beatA  = beatAOverride ?? metA.beat;
+  const beatB  = beatBOverride ?? metB.beat;
   const lcmAB  = lcm(totalA, totalB);
   const CA = "#ff6b4a", CB = "#4ad9ff";
   const S = 320, cx = 160, cy = 160, rA = 128, rB = 84;
-  const pulse = (metA.beat === 0 || metB.beat === 0) && (runningA || runningB);
+  const pulse = (beatA === 0 || beatB === 0) && (runningA || runningB);
   const [vizStyle, setVizStyle] = useState("rings"); // "rings" | "necklace"
 
   useEffect(() => {
-    if (metA.beat === 0 && metB.beat === 0 && (runningA || runningB)) {
+    if (beatA === 0 && beatB === 0 && (runningA || runningB)) {
       setCoincide(true);
       clearTimeout(tRef.current);
       tRef.current = setTimeout(() => setCoincide(false), 550);
     }
-  }, [metA.beat, metB.beat, runningA, runningB]);
+  }, [beatA, beatB, runningA, runningB]);
 
   // cycle counters increment on every downbeat (beat 0) — changing the key
   // remounts the arc/wave elements so their CSS animation restarts in sync
@@ -127,13 +134,13 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
   const [cycleA, setCycleA] = useState(0), [cycleB, setCycleB] = useState(0);
   const lastDownARef = useRef(0), lastDownBRef = useRef(0);
   useEffect(() => {
-    if (metA.beat === 0 && runningA) { lastDownARef.current = performance.now(); setCycleA(++cycleARef.current); }
-  }, [metA.beat, runningA]);
+    if (beatA === 0 && runningA) { lastDownARef.current = performance.now(); setCycleA(++cycleARef.current); }
+  }, [beatA, runningA]);
   useEffect(() => {
-    if (metB.beat === 0 && runningB) { lastDownBRef.current = performance.now(); setCycleB(++cycleBRef.current); }
-  }, [metB.beat, runningB]);
-  const durA = totalA * 60 / metA.bpm;
-  const durB = totalB * 60 / metB.bpm;
+    if (beatB === 0 && runningB) { lastDownBRef.current = performance.now(); setCycleB(++cycleBRef.current); }
+  }, [beatB, runningB]);
+  const durA = durAOverride ?? (totalA * 60 / metA.bpm);
+  const durB = durBOverride ?? (totalB * 60 / metB.bpm);
 
   // necklace mode: single rAF loop drives both the trailing stroke and the
   // traveling dot from the *same* progress fraction, so they can never drift
@@ -155,7 +162,6 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
   const pointsB = polyPoints(totalB, rB, cx, cy);
   const necklace = (points, color, running, prog) => {
     if (!running) return null;
-    const d = points.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x},${y}`).join(" ") + " Z";
     const [dx, dy] = pointAtT(points, prog);
     const [tx, ty] = points[0]; // downbeat vertex — always marked, never animated away
     return (
@@ -239,8 +245,8 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
           )}
           {vizStyle === "necklace" && necklace(pointsA, CA, runningA, progA)}
           {vizStyle === "necklace" && necklace(pointsB, CB, runningB, progB)}
-          {ring(totalA, rA, metA.beat, CA)}
-          {ring(totalB, rB, metB.beat, CB)}
+          {ring(totalA, rA, beatA, CA)}
+          {ring(totalB, rB, beatB, CB)}
           {vizStyle === "rings" && runningA && cycleA > 0 && (
             <circle key={`waveA-${cycleA}`} cx={cx} cy={cy - rA} r={5} fill="none" stroke={CA} strokeWidth={2.5}
               style={{ animation:"waveBurst 0.55s ease-out forwards" }} />
@@ -273,7 +279,7 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
 }
 
 // ─── polimetría panel ─────────────────────────────────────────────────────────
-function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
+function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap }) {
   const ratio  = `${derivado}:${base}`;
   const bpmB   = bpmBase * derivado / base;
   const fmtBpm = (v) => Number.isInteger(v) ? v : v.toFixed(2);
@@ -303,6 +309,7 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
             <input type="range" min={1} max={600} value={bpmBase}
               onChange={(e) => onBpmBase(parseInt(e.target.value))}
               style={{ width:"100%", accentColor:"#ff6b4a" }} />
+            <button onClick={onTap} style={{ background:"#ff6b4a14", border:"1px solid #ff6b4a44", borderRadius:7, color:"#ff6b4a", fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1, marginTop:4 }}>TAP TEMPO</button>
             <div style={{ display:"flex", gap:5 }}>
               {[-10,-1,+1,+10].map((d) => (
                 <button key={d} onClick={() => onBpmBase(Math.min(600, Math.max(1, bpmBase + d)))} style={{
@@ -394,10 +401,10 @@ function SoundSelect({ label, value, onChange, accent }) {
 }
 
 // ─── metronome panel ──────────────────────────────────────────────────────────
-function MetronomePanel({ color, state, onChange, onTiempoChange, running, onToggle, measures }) {
+function MetronomePanel({ color, state, onChange, running, onToggle, measures }) {
   const { bpm, volume, muted, subTick, strongSound, weakSound, subdivision } = state;
-  const baseBpm = state.baseBpm ?? bpm;
   const [soundOpen, setSoundOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(true);
   const tapRef = useRef([]);
   const accent    = color === "A" ? "#ff6b4a" : "#4ad9ff";
   const dimAccent = color === "A" ? "#6a2a18" : "#174d5e";
@@ -447,6 +454,16 @@ function MetronomePanel({ color, state, onChange, onTiempoChange, running, onTog
         </div>
       </div>
 
+      <div style={{ borderTop:`1px solid ${accent}1a` }}>
+        <button onClick={() => setSettingsOpen((o) => !o)} style={{
+          width:"100%", background:"none", border:"none", cursor:"pointer",
+          display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0 2px",
+        }}>
+          <span style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1 }}>AJUSTES</span>
+          <ChevronRight size={12} color="#555" style={{ transform: settingsOpen ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
+        </button>
+      </div>
+      <div style={{ display: settingsOpen ? "flex" : "none", flexDirection:"column", gap:14 }}>
       <div>
         <input type="range" min={1} max={600} value={Math.round(bpm)}
           onChange={(e) => { const v = parseInt(e.target.value); onChange({ bpm: v, baseBpm: v }); }}
@@ -480,6 +497,7 @@ function MetronomePanel({ color, state, onChange, onTiempoChange, running, onTog
         {Array.from({ length:subdivision }, (_,i) => (
           <div key={i} style={{ width:15, height:15, borderRadius:"50%", background: subTick===i ? (i===0 ? accent : `${accent}77`) : (i===0 ? dimAccent : "#222530"), boxShadow: subTick===i ? `0 0 8px ${accent}` : "none", border:`1px solid ${accent}1a`, transition:"background 0.04s, box-shadow 0.04s" }} />
         ))}
+      </div>
       </div>
 
       <div style={{ borderTop:`1px solid ${accent}1a` }}>
@@ -804,46 +822,39 @@ function BeatLights({ metA, metB, runningA, runningB, measuresA, measuresB, enab
 }
 
 // ─── flash toggle button ──────────────────────────────────────────────────────
-function FlashToggle({ on, onToggle, viz, onVizToggle, showVizOption }) {
+function FlashToggle({ on, onToggle }) {
   return (
-    <div style={{ position:"fixed", top:16, right:16, zIndex:1000, display:"flex", alignItems:"center", gap:8 }}>
-      {on && showVizOption && (
-        <button onClick={onVizToggle} title="Cambiar vista de pantalla completa" style={{
-          width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center",
-          background:"#ffd04a1a", border:"1px solid #ffd04a", borderRadius:10,
-          color:"#ffd04a", cursor:"pointer",
-        }}>
-          {viz === "lights"
-            ? <svg width="18" height="18" viewBox="0 0 16 16"><rect x="1" y="1" width="6" height="6" fill="currentColor" /><rect x="9" y="1" width="6" height="6" fill="currentColor" opacity="0.4" /><rect x="1" y="9" width="6" height="6" fill="currentColor" opacity="0.4" /><rect x="9" y="9" width="6" height="6" fill="currentColor" /></svg>
-            : <svg width="18" height="18" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="2" /></svg>}
-        </button>
-      )}
-      <button onClick={onToggle} title={on ? "Desactivar destello de pantalla" : "Activar destello de pantalla"} style={{
-        display:"flex", alignItems:"center", justifyContent:"center",
-        width:40, height:40, borderRadius:10,
-        background: on ? "#ffd04a1a" : "#1e2028",
-        border:`1px solid ${on ? "#ffd04a" : "#3a3d47"}`,
-        color: on ? "#ffd04a" : "#555",
-        cursor:"pointer", transition:"all 0.15s",
-        boxShadow: on ? "0 0 12px #ffd04a44" : "none",
-      }}>
-        <Lightbulb size={18} fill={on ? "#ffd04a" : "none"} />
-      </button>
-    </div>
+    <button onClick={onToggle} title={on ? "Desactivar destello de pantalla" : "Activar destello de pantalla"} style={{
+      position:"fixed", top:16, right:16, zIndex:1000,
+      display:"flex", alignItems:"center", justifyContent:"center",
+      width:40, height:40, borderRadius:10,
+      background: on ? "#ffd04a1a" : "#1e2028",
+      border:`1px solid ${on ? "#ffd04a" : "#3a3d47"}`,
+      color: on ? "#ffd04a" : "#555",
+      cursor:"pointer", transition:"all 0.15s",
+      boxShadow: on ? "0 0 12px #ffd04a44" : "none",
+    }}>
+      <Lightbulb size={18} fill={on ? "#ffd04a" : "none"} />
+    </button>
   );
 }
 
-// ─── tap tempo button (top-left, DUAL SINC mode) ──────────────────────────────
-function TapTempoButton({ onTap }) {
+// ─── fullscreen circle toggle — independent from FlashToggle ─────────────────
+function CircleFullscreenToggle({ on, onToggle }) {
   return (
-    <button onClick={onTap} title="Tap tempo" style={{
-      position:"fixed", top:16, left:16, zIndex:1000,
+    <button onClick={onToggle} title={on ? "Salir de animación de pantalla completa" : "Ver animación en pantalla completa"} style={{
+      position:"fixed", top:16, right:64, zIndex:1000,
       display:"flex", alignItems:"center", justifyContent:"center",
       width:40, height:40, borderRadius:10,
-      background:"#ff6b4a1a", border:"1px solid #ff6b4a55",
-      color:"#ff6b4a", cursor:"pointer", transition:"all 0.1s",
-      fontFamily:"monospace", fontSize:9, fontWeight:700, letterSpacing:0.5,
-    }}>TAP</button>
+      background: on ? "#eeeeee1a" : "#1e2028",
+      border:`1px solid ${on ? "#eee" : "#3a3d47"}`,
+      color: on ? "#eee" : "#555",
+      cursor:"pointer", transition:"all 0.15s",
+    }}>
+      <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <path d="M1 5V1h4M11 1h4v4M15 11v4h-4M5 15H1v-4" />
+      </svg>
+    </button>
   );
 }
 
@@ -901,10 +912,19 @@ function SyncControls({ metA, metB, onChangeA, onChangeB }) {
 }
 
 // ─── polimetría panel ─────────────────────────────────────────────────────────
-function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB }) {
+function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap }) {
   const lcmAB = lcm(beatsA, beatsB);
+  const [open, setOpen] = useState(true);
   return (
-    <div style={{ background:"#1e2028", borderRadius:12, padding:"20px 24px", maxWidth:680, margin:"0 auto", display:"flex", flexDirection:"column", gap:18 }}>
+    <div style={{ background:"#1e2028", borderRadius:12, maxWidth:680, margin:"0 auto", border:"1px solid #252830" }}>
+      <button onClick={() => setOpen((o) => !o)} style={{
+        width:"100%", background:"none", border:"none", cursor:"pointer",
+        display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 20px",
+      }}>
+        <span style={{ color:"#555", fontSize:10, fontFamily:"monospace", letterSpacing:2 }}>BPM Y RELACIÓN</span>
+        <ChevronRight size={14} color="#555" style={{ transform: open ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
+      </button>
+      <div style={{ display: open ? "flex" : "none", flexDirection:"column", gap:18, padding:"0 24px 20px" }}>
       {/* BPM compartido */}
       <div>
         <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:2, marginBottom:8 }}>BPM</div>
@@ -917,6 +937,7 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB }) {
                 <button key={d} onClick={() => onBpm(Math.min(600, Math.max(1, bpm + d)))} style={{ background:"#252830", border:"1px solid #4aff9a33", borderRadius:5, color:"#4aff9a", fontFamily:"monospace", fontSize:11, padding:"4px 9px", cursor:"pointer" }}>{d > 0 ? `+${d}` : d}</button>
               ))}
             </div>
+            <button onClick={onTap} style={{ background:"#4aff9a14", border:"1px solid #4aff9a44", borderRadius:7, color:"#4aff9a", fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1, marginTop:4 }}>TAP TEMPO</button>
           </div>
         </div>
       </div>
@@ -964,6 +985,7 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB }) {
           </div>
         </div>
       </div>
+      </div>
     </div>
   );
 }
@@ -1007,7 +1029,7 @@ export default function DualMetronome() {
   const [measuresA, setMeasuresA] = useState(0);
   const [measuresB, setMeasuresB] = useState(0);
   const [flashOn, setFlashOn] = useState(false);
-  const [fullscreenViz, setFullscreenViz] = useState("lights"); // "lights" | "circle"
+  const [circleFullscreen, setCircleFullscreen] = useState(false); // independent from flashOn
   // practice status reported by PracticeTimer / ProgressivePractice
   // (shown in the collapsed PRÁCTICA bar and as a corner countdown in lights mode)
   const [practiceStatus, setPracticeStatus] = useState({});
@@ -1266,16 +1288,6 @@ export default function DualMetronome() {
     if (runBRef.current && Object.keys(patch).some((k) => NEEDS_RESTART.has(k))) restartNow();
   }, [restartNow]);
 
-  // ── tiempo change (no restart — keeps playback position) ──────────────────
-  const tiempoChangeA = useCallback((patch) => {
-    metARef.current = { ...metARef.current, ...patch };
-    setMetA((p) => ({ ...p, ...patch }));
-  }, []);
-  const tiempoChangeB = useCallback((patch) => {
-    metBRef.current = { ...metBRef.current, ...patch };
-    setMetB((p) => ({ ...p, ...patch }));
-  }, []);
-
   // ── mode switch ────────────────────────────────────────────────────────────
   const handleModeChange = useCallback((newMode) => {
     hardStop();
@@ -1342,27 +1354,32 @@ export default function DualMetronome() {
   const isMetrica    = mode === "metrica";
   const isPolimetria = mode === "polimetria";
   const centerLabel  = isMetrica ? `${relDeriv}:${relBase}` : isPolimetria ? `${polyBeatsA}:${polyBeatsB}` : undefined;
-  // full-screen color/performance view only while something is actually playing
-  const performanceMode = flashOn && (runningA || runningB);
-  // circle fullscreen only makes sense where CircularVisualizer already renders (not Dual Libre)
-  const canShowCircleFullscreen = isMetrica || isPolimetria;
-  const showCircleFullscreen = performanceMode && fullscreenViz === "circle" && canShowCircleFullscreen;
-  const showLightsFullscreen = performanceMode && !showCircleFullscreen;
+  // full-screen views — lights and circle are independent toggles, mutually
+  // exclusive so they never render on top of each other
+  const lightsMode = flashOn && (runningA || runningB);
+  const circleMode = circleFullscreen && (runningA || runningB);
+  const performanceMode = lightsMode || circleMode;
 
   return (
     <div style={{ minHeight:"100vh", background:"#15171c", color:"#ddd", fontFamily:"system-ui,sans-serif", padding: performanceMode ? 0 : "24px 16px", boxSizing:"border-box" }}>
-      <BeatLights metA={metA} metB={metB} runningA={runningA} runningB={runningB} measuresA={measuresA} measuresB={measuresB} enabled={showLightsFullscreen} />
-      {showCircleFullscreen && (
+      <BeatLights metA={metA} metB={metB} runningA={runningA} runningB={runningB} measuresA={measuresA} measuresB={measuresB} enabled={lightsMode} />
+      {circleMode && (
         <div style={{ position:"fixed", inset:0, zIndex:999, display:"flex", alignItems:"center", justifyContent:"center", background:"#15171c" }}>
           <div style={{ transform:"scale(1.7)" }}>
-            <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={isPolimetria} />
+            {mode === "libre" ? (
+              <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB}
+                centerLabel={`${metA.subdivision}:${metB.subdivision}`} showSubtitle={false} showMcm={false}
+                totalAOverride={metA.subdivision} totalBOverride={metB.subdivision}
+                beatAOverride={metA.subTick} beatBOverride={metB.subTick}
+                durAOverride={60 / metA.bpm} durBOverride={60 / metB.bpm} />
+            ) : (
+              <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={isPolimetria} />
+            )}
           </div>
         </div>
       )}
-      <FlashToggle on={flashOn} onToggle={() => setFlashOn((v) => !v)}
-        viz={fullscreenViz} onVizToggle={() => setFullscreenViz((v) => (v === "lights" ? "circle" : "lights"))}
-        showVizOption={canShowCircleFullscreen} />
-      {(isMetrica || isPolimetria) && <TapTempoButton onTap={isMetrica ? handleGlobalTap : handlePolyTap} />}
+      <FlashToggle on={flashOn} onToggle={() => setFlashOn((v) => { const n = !v; if (n) setCircleFullscreen(false); return n; })} />
+      <CircleFullscreenToggle on={circleFullscreen} onToggle={() => setCircleFullscreen((v) => { const n = !v; if (n) setFlashOn(false); return n; })} />
       <DualSwitch on={dualOn} onToggle={toggleDual} />
       {performanceMode && practiceStatus.timerOn && (
         <div style={{
@@ -1396,6 +1413,7 @@ export default function DualMetronome() {
             <PoliPanel
               bpmBase={relBpmBase} base={relBase} derivado={relDeriv}
               onBpmBase={handleRelBpmBase} onBase={handleRelBase} onDeriv={handleRelDeriv}
+              onTap={handleGlobalTap}
             />
           </div>
           <SyncControls metA={metA} metB={metB} onChangeA={changeMetA} onChangeB={changeMetB} />
@@ -1415,6 +1433,7 @@ export default function DualMetronome() {
             <PolyMetriaPanel
               bpm={polyBpm} beatsA={polyBeatsA} beatsB={polyBeatsB}
               onBpm={handlePolyBpm} onBeatsA={handlePolyBeatsA} onBeatsB={handlePolyBeatsB}
+              onTap={handlePolyTap}
             />
           </div>
           <SyncControls metA={metA} metB={metB} onChangeA={changeMetA} onChangeB={changeMetB} />
@@ -1428,8 +1447,8 @@ export default function DualMetronome() {
       {mode === "libre" && (
         <>
           <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", maxWidth:880, margin:"0 auto" }}>
-            <MetronomePanel color="A" state={metA} onChange={changeMetA} onTiempoChange={tiempoChangeA} running={runningA} onToggle={toggleA} measures={measuresA} />
-            <MetronomePanel color="B" state={metB} onChange={changeMetB} onTiempoChange={tiempoChangeB} running={runningB} onToggle={toggleB} measures={measuresB} />
+            <MetronomePanel color="A" state={metA} onChange={changeMetA} running={runningA} onToggle={toggleA} measures={measuresA} />
+            <MetronomePanel color="B" state={metB} onChange={changeMetB} running={runningB} onToggle={toggleB} measures={measuresB} />
           </div>
           <div style={{ maxWidth:880, margin:"22px auto 90px" }}>
             <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} onFinish={hardStop} status={practiceStatus} onStatus={updatePracticeStatus} />
