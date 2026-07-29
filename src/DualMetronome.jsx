@@ -199,11 +199,16 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
     }}>
       <div style={{ position:"relative" }}>
         <button onClick={() => setVizStyle((v) => (v === "rings" ? "necklace" : "rings"))} title="Cambiar estilo de visualizador" style={{
-          position:"absolute", top:-4, right:-4, zIndex:2,
-          background:"#252830", border:"1px solid #3a3d47", borderRadius:8,
-          color:"#777", fontFamily:"monospace", fontSize:9, fontWeight:600,
-          padding:"4px 8px", cursor:"pointer", letterSpacing:0.5,
-        }}>{vizStyle === "rings" ? "◎" : "⬠"}</button>
+          position:"absolute", top:-16, left:"50%", transform:"translateX(-50%)", zIndex:2,
+          width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center",
+          background:"#ffd04a1a", border:"1px solid #ffd04a", borderRadius:"50%",
+          color:"#ffd04a", cursor:"pointer",
+          boxShadow:"0 0 12px #ffd04a44",
+        }}>
+          {vizStyle === "rings"
+            ? <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" /></svg>
+            : <svg width="16" height="16" viewBox="0 0 16 16"><polygon points="8,1 15,6 12,15 4,15 1,6" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>}
+        </button>
         <div style={{
           position:"absolute", inset:-30, borderRadius:"50%",
           background: `radial-gradient(circle, ${coincide ? "#ffffff22" : `${CA}14`} 0%, transparent 70%)`,
@@ -244,7 +249,7 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
             <circle key={`waveB-${cycleB}`} cx={cx} cy={cy - rB} r={5} fill="none" stroke={CB} strokeWidth={2.5}
               style={{ animation:"waveBurst 0.55s ease-out forwards" }} />
           )}
-          <text x={cx} y={cy-10} textAnchor="middle"
+          <text x={cx} y={showMcm ? cy - 10 : cy + 10} textAnchor="middle"
             fill={coincide ? "#fff" : "#ddd"} fontSize={30}
             fontFamily="'JetBrains Mono',monospace" fontWeight="800"
             style={{ transition:"fill 0.2s", filter: coincide ? "drop-shadow(0 0 10px #fff)" : "none" }}>{label}</text>
@@ -790,20 +795,32 @@ function BeatLights({ metA, metB, runningA, runningB, measuresA, measuresB, enab
 }
 
 // ─── flash toggle button ──────────────────────────────────────────────────────
-function FlashToggle({ on, onToggle }) {
+function FlashToggle({ on, onToggle, viz, onVizToggle, showVizOption }) {
   return (
-    <button onClick={onToggle} title={on ? "Desactivar destello de pantalla" : "Activar destello de pantalla"} style={{
-      position:"fixed", top:16, right:16, zIndex:1000,
-      display:"flex", alignItems:"center", justifyContent:"center",
-      width:40, height:40, borderRadius:10,
-      background: on ? "#ffd04a1a" : "#1e2028",
-      border:`1px solid ${on ? "#ffd04a" : "#3a3d47"}`,
-      color: on ? "#ffd04a" : "#555",
-      cursor:"pointer", transition:"all 0.15s",
-      boxShadow: on ? "0 0 12px #ffd04a44" : "none",
-    }}>
-      <Lightbulb size={18} fill={on ? "#ffd04a" : "none"} />
-    </button>
+    <div style={{ position:"fixed", top:16, right:16, zIndex:1000, display:"flex", alignItems:"center", gap:8 }}>
+      {on && showVizOption && (
+        <button onClick={onVizToggle} title="Cambiar vista de pantalla completa" style={{
+          width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center",
+          background:"#ffd04a1a", border:"1px solid #ffd04a", borderRadius:10,
+          color:"#ffd04a", cursor:"pointer",
+        }}>
+          {viz === "lights"
+            ? <svg width="18" height="18" viewBox="0 0 16 16"><rect x="1" y="1" width="6" height="6" fill="currentColor" /><rect x="9" y="1" width="6" height="6" fill="currentColor" opacity="0.4" /><rect x="1" y="9" width="6" height="6" fill="currentColor" opacity="0.4" /><rect x="9" y="9" width="6" height="6" fill="currentColor" /></svg>
+            : <svg width="18" height="18" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="2" /></svg>}
+        </button>
+      )}
+      <button onClick={onToggle} title={on ? "Desactivar destello de pantalla" : "Activar destello de pantalla"} style={{
+        display:"flex", alignItems:"center", justifyContent:"center",
+        width:40, height:40, borderRadius:10,
+        background: on ? "#ffd04a1a" : "#1e2028",
+        border:`1px solid ${on ? "#ffd04a" : "#3a3d47"}`,
+        color: on ? "#ffd04a" : "#555",
+        cursor:"pointer", transition:"all 0.15s",
+        boxShadow: on ? "0 0 12px #ffd04a44" : "none",
+      }}>
+        <Lightbulb size={18} fill={on ? "#ffd04a" : "none"} />
+      </button>
+    </div>
   );
 }
 
@@ -981,6 +998,7 @@ export default function DualMetronome() {
   const [measuresA, setMeasuresA] = useState(0);
   const [measuresB, setMeasuresB] = useState(0);
   const [flashOn, setFlashOn] = useState(false);
+  const [fullscreenViz, setFullscreenViz] = useState("lights"); // "lights" | "circle"
   // practice status reported by PracticeTimer / ProgressivePractice
   // (shown in the collapsed PRÁCTICA bar and as a corner countdown in lights mode)
   const [practiceStatus, setPracticeStatus] = useState({});
@@ -1317,11 +1335,24 @@ export default function DualMetronome() {
   const centerLabel  = isMetrica ? `${relDeriv}:${relBase}` : isPolimetria ? `${polyBeatsA}:${polyBeatsB}` : undefined;
   // full-screen color/performance view only while something is actually playing
   const performanceMode = flashOn && (runningA || runningB);
+  // circle fullscreen only makes sense where CircularVisualizer already renders (not Dual Libre)
+  const canShowCircleFullscreen = isMetrica || isPolimetria;
+  const showCircleFullscreen = performanceMode && fullscreenViz === "circle" && canShowCircleFullscreen;
+  const showLightsFullscreen = performanceMode && !showCircleFullscreen;
 
   return (
     <div style={{ minHeight:"100vh", background:"#15171c", color:"#ddd", fontFamily:"system-ui,sans-serif", padding: performanceMode ? 0 : "24px 16px", boxSizing:"border-box" }}>
-      <BeatLights metA={metA} metB={metB} runningA={runningA} runningB={runningB} measuresA={measuresA} measuresB={measuresB} enabled={performanceMode} />
-      <FlashToggle on={flashOn} onToggle={() => setFlashOn((v) => !v)} />
+      <BeatLights metA={metA} metB={metB} runningA={runningA} runningB={runningB} measuresA={measuresA} measuresB={measuresB} enabled={showLightsFullscreen} />
+      {showCircleFullscreen && (
+        <div style={{ position:"fixed", inset:0, zIndex:999, display:"flex", alignItems:"center", justifyContent:"center", background:"#15171c" }}>
+          <div style={{ transform:"scale(1.7)" }}>
+            <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={isPolimetria} />
+          </div>
+        </div>
+      )}
+      <FlashToggle on={flashOn} onToggle={() => setFlashOn((v) => !v)}
+        viz={fullscreenViz} onVizToggle={() => setFullscreenViz((v) => (v === "lights" ? "circle" : "lights"))}
+        showVizOption={canShowCircleFullscreen} />
       {(isMetrica || isPolimetria) && <TapTempoButton onTap={isMetrica ? handleGlobalTap : handlePolyTap} />}
       <DualSwitch on={dualOn} onToggle={toggleDual} />
       {performanceMode && practiceStatus.timerOn && (
