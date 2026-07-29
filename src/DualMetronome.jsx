@@ -82,6 +82,25 @@ function ModeSelector({ mode, setMode }) {
 }
 
 // ─── circular visualizer ──────────────────────────────────────────────────────
+// regular polygon vertices, same angle convention as ring() (i=0 at top)
+function polyPoints(total, r, cx, cy) {
+  return Array.from({ length: total }, (_, i) => {
+    const a = (i / total) * 2 * Math.PI - Math.PI / 2;
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  });
+}
+// point along a REGULAR polygon's perimeter at fraction t (0-1) — equal-length
+// edges mean "equal time per edge" exactly matches "equal length per edge"
+function pointAtT(points, t) {
+  const n = points.length;
+  const segT = ((t % 1) + 1) % 1 * n;
+  const i = Math.floor(segT) % n;
+  const frac = segT - Math.floor(segT);
+  const [x0, y0] = points[i];
+  const [x1, y1] = points[(i + 1) % n];
+  return [x0 + (x1 - x0) * frac, y0 + (y1 - y0) * frac];
+}
+
 function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showSubtitle, showMcm = true }) {
   const [coincide, setCoincide] = useState(false);
   const tRef = useRef(null);
@@ -91,6 +110,7 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
   const CA = "#ff6b4a", CB = "#4ad9ff";
   const S = 320, cx = 160, cy = 160, rA = 128, rB = 84;
   const pulse = (metA.beat === 0 || metB.beat === 0) && (runningA || runningB);
+  const [vizStyle, setVizStyle] = useState("rings"); // "rings" | "necklace"
 
   useEffect(() => {
     if (metA.beat === 0 && metB.beat === 0 && (runningA || runningB)) {
@@ -105,10 +125,50 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
   // with the real tempo instead of looping on a fixed timer
   const cycleARef = useRef(0), cycleBRef = useRef(0);
   const [cycleA, setCycleA] = useState(0), [cycleB, setCycleB] = useState(0);
-  useEffect(() => { if (metA.beat === 0 && runningA) setCycleA(++cycleARef.current); }, [metA.beat, runningA]);
-  useEffect(() => { if (metB.beat === 0 && runningB) setCycleB(++cycleBRef.current); }, [metB.beat, runningB]);
+  const lastDownARef = useRef(0), lastDownBRef = useRef(0);
+  useEffect(() => {
+    if (metA.beat === 0 && runningA) { lastDownARef.current = performance.now(); setCycleA(++cycleARef.current); }
+  }, [metA.beat, runningA]);
+  useEffect(() => {
+    if (metB.beat === 0 && runningB) { lastDownBRef.current = performance.now(); setCycleB(++cycleBRef.current); }
+  }, [metB.beat, runningB]);
   const durA = totalA * 60 / metA.bpm;
   const durB = totalB * 60 / metB.bpm;
+
+  // necklace mode: single rAF loop drives both the trailing stroke and the
+  // traveling dot from the *same* progress fraction, so they can never drift
+  // apart from each other (unlike separately-timed CSS/SMIL animations)
+  const [progA, setProgA] = useState(0), [progB, setProgB] = useState(0);
+  useEffect(() => {
+    if (vizStyle !== "necklace") return;
+    let raf;
+    const tick = () => {
+      if (runningA && durA > 0) setProgA(((performance.now() - lastDownARef.current) / 1000 / durA) % 1);
+      if (runningB && durB > 0) setProgB(((performance.now() - lastDownBRef.current) / 1000 / durB) % 1);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [vizStyle, runningA, runningB, durA, durB]);
+
+  const pointsA = polyPoints(totalA, rA, cx, cy);
+  const pointsB = polyPoints(totalB, rB, cx, cy);
+  const necklace = (points, color, running, prog) => {
+    if (!running) return null;
+    const d = points.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x},${y}`).join(" ") + " Z";
+    const [dx, dy] = pointAtT(points, prog);
+    const [tx, ty] = points[0]; // downbeat vertex — always marked, never animated away
+    return (
+      <>
+        <polygon points={points.map((p) => p.join(",")).join(" ")} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" opacity={0.18} />
+        <polygon points={points.map((p) => p.join(",")).join(" ")} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round"
+          pathLength={1} strokeDasharray={1} strokeDashoffset={1 - prog}
+          style={{ filter:`drop-shadow(0 0 6px ${color})` }} />
+        <polygon points={`${tx},${ty - 7} ${tx + 6},${ty + 5} ${tx - 6},${ty + 5}`} fill={color} style={{ filter:`drop-shadow(0 0 7px ${color})` }} />
+        <circle cx={dx} cy={dy} r={5.5} fill="#fff" style={{ filter:"drop-shadow(0 0 8px #fff)" }} />
+      </>
+    );
+  };
 
   const ring = (total, r, activeBeat, color) => {
     const dr = total <= 8 ? 12 : total <= 12 ? 9 : 7;
@@ -138,6 +198,12 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
       transition: pulse ? "transform 0.04s" : "transform 0.25s ease-out",
     }}>
       <div style={{ position:"relative" }}>
+        <button onClick={() => setVizStyle((v) => (v === "rings" ? "necklace" : "rings"))} title="Cambiar estilo de visualizador" style={{
+          position:"absolute", top:-4, right:-4, zIndex:2,
+          background:"#252830", border:"1px solid #3a3d47", borderRadius:8,
+          color:"#777", fontFamily:"monospace", fontSize:9, fontWeight:600,
+          padding:"4px 8px", cursor:"pointer", letterSpacing:0.5,
+        }}>{vizStyle === "rings" ? "◎" : "⬠"}</button>
         <div style={{
           position:"absolute", inset:-30, borderRadius:"50%",
           background: `radial-gradient(circle, ${coincide ? "#ffffff22" : `${CA}14`} 0%, transparent 70%)`,
@@ -154,25 +220,27 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
           <circle cx={cx} cy={cy} r={rA} fill="none" stroke={`${CA}77`} strokeWidth={3} />
           <circle cx={cx} cy={cy} r={rB} fill="none" stroke={`${CB}77`} strokeWidth={3} />
           {coincide && <circle cx={cx} cy={cy} r={54} fill="#ffffff14" stroke="#ffffff88" strokeWidth={2.5} style={{ filter:"drop-shadow(0 0 16px #fff)" }} />}
-          {runningA && (
+          {vizStyle === "rings" && runningA && (
             <circle key={`arcA-${cycleA}`} cx={cx} cy={cy} r={rA} fill="none" stroke={CA} strokeWidth={4}
               strokeLinecap="round" pathLength={1} strokeDasharray={1} strokeDashoffset={1}
               transform={`rotate(-90 ${cx} ${cy})`}
               style={{ animation:`fillArc ${durA}s linear forwards`, filter:`drop-shadow(0 0 5px ${CA})` }} />
           )}
-          {runningB && (
+          {vizStyle === "rings" && runningB && (
             <circle key={`arcB-${cycleB}`} cx={cx} cy={cy} r={rB} fill="none" stroke={CB} strokeWidth={4}
               strokeLinecap="round" pathLength={1} strokeDasharray={1} strokeDashoffset={1}
               transform={`rotate(-90 ${cx} ${cy})`}
               style={{ animation:`fillArc ${durB}s linear forwards`, filter:`drop-shadow(0 0 5px ${CB})` }} />
           )}
+          {vizStyle === "necklace" && necklace(pointsA, CA, runningA, progA)}
+          {vizStyle === "necklace" && necklace(pointsB, CB, runningB, progB)}
           {ring(totalA, rA, metA.beat, CA)}
           {ring(totalB, rB, metB.beat, CB)}
-          {runningA && cycleA > 0 && (
+          {vizStyle === "rings" && runningA && cycleA > 0 && (
             <circle key={`waveA-${cycleA}`} cx={cx} cy={cy - rA} r={5} fill="none" stroke={CA} strokeWidth={2.5}
               style={{ animation:"waveBurst 0.55s ease-out forwards" }} />
           )}
-          {runningB && cycleB > 0 && (
+          {vizStyle === "rings" && runningB && cycleB > 0 && (
             <circle key={`waveB-${cycleB}`} cx={cx} cy={cy - rB} r={5} fill="none" stroke={CB} strokeWidth={2.5}
               style={{ animation:"waveBurst 0.55s ease-out forwards" }} />
           )}
