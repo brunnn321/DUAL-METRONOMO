@@ -100,6 +100,16 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
     }
   }, [metA.beat, metB.beat, runningA, runningB]);
 
+  // cycle counters increment on every downbeat (beat 0) — changing the key
+  // remounts the arc/wave elements so their CSS animation restarts in sync
+  // with the real tempo instead of looping on a fixed timer
+  const cycleARef = useRef(0), cycleBRef = useRef(0);
+  const [cycleA, setCycleA] = useState(0), [cycleB, setCycleB] = useState(0);
+  useEffect(() => { if (metA.beat === 0 && runningA) setCycleA(++cycleARef.current); }, [metA.beat, runningA]);
+  useEffect(() => { if (metB.beat === 0 && runningB) setCycleB(++cycleBRef.current); }, [metB.beat, runningB]);
+  const durA = totalA * 60 / metA.bpm;
+  const durB = totalB * 60 / metB.bpm;
+
   const ring = (total, r, activeBeat, color) => {
     const dr = total <= 8 ? 12 : total <= 12 ? 9 : 7;
     return Array.from({ length:total }, (_, i) => {
@@ -144,8 +154,28 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
           <circle cx={cx} cy={cy} r={rA} fill="none" stroke={`${CA}77`} strokeWidth={3} />
           <circle cx={cx} cy={cy} r={rB} fill="none" stroke={`${CB}77`} strokeWidth={3} />
           {coincide && <circle cx={cx} cy={cy} r={54} fill="#ffffff14" stroke="#ffffff88" strokeWidth={2.5} style={{ filter:"drop-shadow(0 0 16px #fff)" }} />}
+          {runningA && (
+            <circle key={`arcA-${cycleA}`} cx={cx} cy={cy} r={rA} fill="none" stroke={CA} strokeWidth={4}
+              strokeLinecap="round" pathLength={1} strokeDasharray={1} strokeDashoffset={1}
+              transform={`rotate(-90 ${cx} ${cy})`}
+              style={{ animation:`fillArc ${durA}s linear forwards`, filter:`drop-shadow(0 0 5px ${CA})` }} />
+          )}
+          {runningB && (
+            <circle key={`arcB-${cycleB}`} cx={cx} cy={cy} r={rB} fill="none" stroke={CB} strokeWidth={4}
+              strokeLinecap="round" pathLength={1} strokeDasharray={1} strokeDashoffset={1}
+              transform={`rotate(-90 ${cx} ${cy})`}
+              style={{ animation:`fillArc ${durB}s linear forwards`, filter:`drop-shadow(0 0 5px ${CB})` }} />
+          )}
           {ring(totalA, rA, metA.beat, CA)}
           {ring(totalB, rB, metB.beat, CB)}
+          {runningA && cycleA > 0 && (
+            <circle key={`waveA-${cycleA}`} cx={cx} cy={cy - rA} r={5} fill="none" stroke={CA} strokeWidth={2.5}
+              style={{ animation:"waveBurst 0.55s ease-out forwards" }} />
+          )}
+          {runningB && cycleB > 0 && (
+            <circle key={`waveB-${cycleB}`} cx={cx} cy={cy - rB} r={5} fill="none" stroke={CB} strokeWidth={2.5}
+              style={{ animation:"waveBurst 0.55s ease-out forwards" }} />
+          )}
           <text x={cx} y={cy-10} textAnchor="middle"
             fill={coincide ? "#fff" : "#ddd"} fontSize={30}
             fontFamily="'JetBrains Mono',monospace" fontWeight="800"

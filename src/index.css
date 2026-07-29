@@ -12,3 +12,13 @@ body {
   width: 100%;
   min-height: 100vh;
 }
+
+@keyframes fillArc {
+  from { stroke-dashoffset: 1; }
+  to   { stroke-dashoffset: 0; }
+}
+
+@keyframes waveBurst {
+  from { r: 5;  stroke-width: 2.5; opacity: 0.9; }
+  to   { r: 24; stroke-width: 0.5; opacity: 0; }
+}
