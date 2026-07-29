@@ -30,33 +30,46 @@ const FIGURES = [
   { value:13, kind:"sixteenth", num:13   }, // trecesillo
 ];
 
-// hand-drawn note icons (SVG paths, currentColor) — consistent on every OS/font.
-// Beams are slightly slanted like engraved notation.
-function NoteIcon({ kind, size = 22 }) {
-  if (kind === "quarter") return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-      <ellipse cx="10.6" cy="18.2" rx="4.1" ry="3" transform="rotate(-21 10.6 18.2)" />
-      <path d="M13.9 3.6 h1.5 v14.4 h-1.5 z" />
-    </svg>
-  );
-  if (kind === "eighth") return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-      <ellipse cx="5.4" cy="19.4" rx="3.2" ry="2.4" transform="rotate(-21 5.4 19.4)" />
-      <ellipse cx="17"  cy="18.2" rx="3.2" ry="2.4" transform="rotate(-21 17 18.2)" />
-      <path d="M7.6 6.4 h1.4 v13 h-1.4 z" />
-      <path d="M19.2 5.2 h1.4 v13 h-1.4 z" />
-      <path d="M7.6 6.4 L20.6 5.2 L20.6 8.3 L7.6 9.5 Z" />
-    </svg>
-  );
-  // sixteenth — double slanted beam
+// real music-notation glyphs via the Bravura font (SMuFL standard, SIL Open
+// Font License) — same glyphs used by professional notation software.
+const SMUFL = {
+  quarter:   "", // noteQuarterUp
+  eighth:    "", // note8thUp
+  sixteenth: "", // note16thUp
+};
+const TUPLET_DIGIT = ""; // tuplet0 — digits 0-9 are sequential from here
+
+// Glyph bounding boxes from Bravura's own metadata (staff-space units, 1 staff
+// space = 0.25 em by SMuFL convention) — used to place each glyph's baseline
+// so its *visual* center lands exactly in the middle of the SVG, regardless
+// of the font's em-box whitespace (a plain <span> can't be centered this way).
+const NOTE_NE_Y = 3.5, NOTE_SW_Y = -0.56;   // noteQuarterUp/8thUp/16thUp (near-identical)
+const DIGIT_NE_Y = 1.5, DIGIT_SW_Y = -0.03; // tuplet0-9
+
+function NoteIcon({ kind, num, width = 32, height = 34 }) {
+  const digits = num != null
+    ? String(num).split("").map((d) => String.fromCodePoint(TUPLET_DIGIT.codePointAt(0) + Number(d))).join("")
+    : null;
+
+  const numBoxH  = digits ? 13 : 0;
+  const gap      = digits ? 2 : 0;
+  const noteBoxH = height - numBoxH - gap;
+  const noteBoxY = numBoxH + gap;
+
+  const noteEmH   = (NOTE_NE_Y - NOTE_SW_Y) * 0.25;
+  const noteFont  = noteBoxH / noteEmH;
+  const noteBase  = noteBoxY + noteBoxH / 2 + noteFont * 0.25 * (NOTE_NE_Y + NOTE_SW_Y) / 2;
+
+  const digitEmH  = (DIGIT_NE_Y - DIGIT_SW_Y) * 0.25;
+  const digitFont = numBoxH / digitEmH;
+  const digitBase = numBoxH / 2 + digitFont * 0.25 * (DIGIT_NE_Y + DIGIT_SW_Y) / 2;
+
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-      <ellipse cx="5.4" cy="19.4" rx="3.2" ry="2.4" transform="rotate(-21 5.4 19.4)" />
-      <ellipse cx="17"  cy="18.2" rx="3.2" ry="2.4" transform="rotate(-21 17 18.2)" />
-      <path d="M7.6 4.6 h1.4 v14.8 h-1.4 z" />
-      <path d="M19.2 3.4 h1.4 v14.8 h-1.4 z" />
-      <path d="M7.6 4.6 L20.6 3.4 L20.6 5.9 L7.6 7.1 Z" />
-      <path d="M7.6 9 L20.6 7.8 L20.6 10.3 L7.6 11.5 Z" />
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      {digits && (
+        <text x={width / 2} y={digitBase} textAnchor="middle" fontFamily="Bravura" fontSize={digitFont} fill="currentColor">{digits}</text>
+      )}
+      <text x={width / 2} y={noteBase} textAnchor="middle" fontFamily="Bravura" fontSize={noteFont} fill="currentColor">{SMUFL[kind]}</text>
     </svg>
   );
 }
@@ -397,11 +410,10 @@ function MetronomePanel({ color, state, onChange, onTiempoChange, running, onTog
             <button key={value} onClick={() => onChange({ subdivision: value })} style={{
               background: on ? accent : "#252830", border:`1px solid ${on ? accent : "#3a3d47"}`,
               borderRadius:7, color: on ? "#15171c" : "#888", cursor:"pointer",
-              display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end",
-              width:44, height:46, padding:"3px 0 4px", lineHeight:1, gap:1, boxSizing:"border-box",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              width:44, height:46, padding:0, boxSizing:"border-box",
             }}>
-              <span style={{ fontSize:9, height:10, fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>{num ?? ""}</span>
-              <NoteIcon kind={kind} />
+              <NoteIcon kind={kind} num={num} />
             </button>
           );
         })}
