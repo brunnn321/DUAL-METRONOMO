@@ -882,7 +882,7 @@ export default function DualMetronome() {
   const [metB, setMetB] = useState(() => ({ ...DEFAULT_B, bpm:112.5, baseBpm:112.5, timeSig:"5/4" }));
   const [measuresA, setMeasuresA] = useState(0);
   const [measuresB, setMeasuresB] = useState(0);
-  const [flashOn, setFlashOn] = useState(true);
+  const [flashOn, setFlashOn] = useState(false);
   // practice status reported by PracticeTimer / ProgressivePractice
   // (shown in the collapsed PRÁCTICA bar and as a corner countdown in lights mode)
   const [practiceStatus, setPracticeStatus] = useState({});
