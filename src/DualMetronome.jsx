@@ -800,12 +800,12 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB }) {
       {/* selectores de tiempos */}
       <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
         {[
-          { label:"TIEMPOS A", color:"#ff6b4a", val:beatsA, set:onBeatsA },
-          { label:"TIEMPOS B", color:"#4ad9ff", val:beatsB, set:onBeatsB },
+          { label:"A", color:"#ff6b4a", val:beatsA, set:onBeatsA },
+          { label:"B", color:"#4ad9ff", val:beatsB, set:onBeatsB },
         ].map(({ label, color, val, set }) => (
           <div key={label} style={{ flex:1, minWidth:200 }}>
             <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:8 }}>
-              <span style={{ color }}>●</span> {label} <span style={{ color:"#333" }}>· por compás</span>
+              <span style={{ color }}>●</span> {label}
             </div>
             <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
               {[2,3,4,5,6,7,8,9,11,13,15].map((n) => (
