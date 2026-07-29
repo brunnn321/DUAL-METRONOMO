@@ -199,11 +199,11 @@ function CircularVisualizer({ metA, metB, runningA, runningB, centerLabel, showS
     }}>
       <div style={{ position:"relative" }}>
         <button onClick={() => setVizStyle((v) => (v === "rings" ? "necklace" : "rings"))} title="Cambiar estilo de visualizador" style={{
-          position:"absolute", top:-16, left:"50%", transform:"translateX(-50%)", zIndex:2,
-          width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center",
+          position:"absolute", top:2, right:2, zIndex:2,
+          width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center",
           background:"#ffd04a1a", border:"1px solid #ffd04a", borderRadius:"50%",
           color:"#ffd04a", cursor:"pointer",
-          boxShadow:"0 0 12px #ffd04a44",
+          boxShadow:"0 0 10px #ffd04a44",
         }}>
           {vizStyle === "rings"
             ? <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" /></svg>
@@ -277,13 +277,21 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
   const ratio  = `${derivado}:${base}`;
   const bpmB   = bpmBase * derivado / base;
   const fmtBpm = (v) => Number.isInteger(v) ? v : v.toFixed(2);
+  const [open, setOpen] = useState(true);
 
   return (
-    <div style={{
-      background:"#1e2028", borderRadius:12, padding:"20px 24px",
-      maxWidth:680, margin:"0 auto",
-      display:"flex", flexDirection:"column", gap:18,
-    }}>
+    <div style={{ background:"#1e2028", borderRadius:12, maxWidth:680, margin:"0 auto", border:"1px solid #252830" }}>
+      <button onClick={() => setOpen((o) => !o)} style={{
+        width:"100%", background:"none", border:"none", cursor:"pointer",
+        display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 20px",
+      }}>
+        <span style={{ color:"#555", fontSize:10, fontFamily:"monospace", letterSpacing:2 }}>BPM Y RELACIÓN</span>
+        <ChevronRight size={14} color="#555" style={{ transform: open ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
+      </button>
+      <div style={{
+        display: open ? "flex" : "none", flexDirection:"column", gap:18,
+        padding:"0 24px 20px",
+      }}>
       {/* BPM base */}
       <div>
         <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:2, marginBottom:8 }}>BPM A</div>
@@ -363,6 +371,7 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv }) {
           <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>BPM B</div>
           <div style={{ color:"#4ad9ff", fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, marginTop:3 }}>{fmtBpm(bpmB)}</div>
         </div>
+      </div>
       </div>
     </div>
   );
