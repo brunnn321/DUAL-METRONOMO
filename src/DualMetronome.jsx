@@ -117,7 +117,7 @@ function CircularVisualizer({
   const CA = "#ff6b4a", CB = "#4ad9ff";
   const S = 320, cx = 160, cy = 160, rA = 128, rB = 84;
   const pulse = (beatA === 0 || beatB === 0) && (runningA || runningB);
-  const [vizStyle, setVizStyle] = useState("rings"); // "rings" | "necklace"
+  const [vizStyle, setVizStyle] = useState("necklace"); // "rings" | "necklace"
 
   useEffect(() => {
     if (beatA === 0 && beatB === 0 && (runningA || runningB)) {
@@ -228,6 +228,10 @@ function CircularVisualizer({
             </radialGradient>
           </defs>
           <circle cx={cx} cy={cy} r={rA+4} fill="url(#centerGlow)" />
+          {vizStyle === "rings" && (runningA || runningB) && (
+            <circle cx={cx} cy={cy} r={rA + 16} fill="none" stroke="#ffffff18" strokeWidth={1} strokeDasharray="2 10"
+              style={{ transformOrigin:`${cx}px ${cy}px`, animation:"slowSpin 18s linear infinite" }} />
+          )}
           <circle cx={cx} cy={cy} r={rA} fill="none" stroke={`${CA}77`} strokeWidth={3} />
           <circle cx={cx} cy={cy} r={rB} fill="none" stroke={`${CB}77`} strokeWidth={3} />
           {coincide && <circle cx={cx} cy={cy} r={54} fill="#ffffff14" stroke="#ffffff88" strokeWidth={2.5} style={{ filter:"drop-shadow(0 0 16px #fff)" }} />}
@@ -459,7 +463,7 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures })
           width:"100%", background:"none", border:"none", cursor:"pointer",
           display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0 2px",
         }}>
-          <span style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1 }}>AJUSTES</span>
+          <span style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1 }}>BPM Y RELACIÓN</span>
           <ChevronRight size={12} color="#555" style={{ transform: settingsOpen ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
         </button>
       </div>
@@ -821,11 +825,11 @@ function BeatLights({ metA, metB, runningA, runningB, measuresA, measuresB, enab
   );
 }
 
-// ─── flash toggle button ──────────────────────────────────────────────────────
+// ─── flash toggle button (top-left) ───────────────────────────────────────────
 function FlashToggle({ on, onToggle }) {
   return (
     <button onClick={onToggle} title={on ? "Desactivar destello de pantalla" : "Activar destello de pantalla"} style={{
-      position:"fixed", top:16, right:16, zIndex:1000,
+      position:"fixed", top:16, left:16, zIndex:1000,
       display:"flex", alignItems:"center", justifyContent:"center",
       width:40, height:40, borderRadius:10,
       background: on ? "#ffd04a1a" : "#1e2028",
@@ -835,25 +839,6 @@ function FlashToggle({ on, onToggle }) {
       boxShadow: on ? "0 0 12px #ffd04a44" : "none",
     }}>
       <Lightbulb size={18} fill={on ? "#ffd04a" : "none"} />
-    </button>
-  );
-}
-
-// ─── fullscreen circle toggle — independent from FlashToggle ─────────────────
-function CircleFullscreenToggle({ on, onToggle }) {
-  return (
-    <button onClick={onToggle} title={on ? "Salir de animación de pantalla completa" : "Ver animación en pantalla completa"} style={{
-      position:"fixed", top:16, right:64, zIndex:1000,
-      display:"flex", alignItems:"center", justifyContent:"center",
-      width:40, height:40, borderRadius:10,
-      background: on ? "#eeeeee1a" : "#1e2028",
-      border:`1px solid ${on ? "#eee" : "#3a3d47"}`,
-      color: on ? "#eee" : "#555",
-      cursor:"pointer", transition:"all 0.15s",
-    }}>
-      <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
-        <path d="M1 5V1h4M11 1h4v4M15 11v4h-4M5 15H1v-4" />
-      </svg>
     </button>
   );
 }
@@ -1029,7 +1014,6 @@ export default function DualMetronome() {
   const [measuresA, setMeasuresA] = useState(0);
   const [measuresB, setMeasuresB] = useState(0);
   const [flashOn, setFlashOn] = useState(false);
-  const [circleFullscreen, setCircleFullscreen] = useState(false); // independent from flashOn
   // practice status reported by PracticeTimer / ProgressivePractice
   // (shown in the collapsed PRÁCTICA bar and as a corner countdown in lights mode)
   const [practiceStatus, setPracticeStatus] = useState({});
@@ -1354,32 +1338,13 @@ export default function DualMetronome() {
   const isMetrica    = mode === "metrica";
   const isPolimetria = mode === "polimetria";
   const centerLabel  = isMetrica ? `${relDeriv}:${relBase}` : isPolimetria ? `${polyBeatsA}:${polyBeatsB}` : undefined;
-  // full-screen views — lights and circle are independent toggles, mutually
-  // exclusive so they never render on top of each other
-  const lightsMode = flashOn && (runningA || runningB);
-  const circleMode = circleFullscreen && (runningA || runningB);
-  const performanceMode = lightsMode || circleMode;
+  // full-screen color/performance view only while something is actually playing
+  const performanceMode = flashOn && (runningA || runningB);
 
   return (
     <div style={{ minHeight:"100vh", background:"#15171c", color:"#ddd", fontFamily:"system-ui,sans-serif", padding: performanceMode ? 0 : "24px 16px", boxSizing:"border-box" }}>
-      <BeatLights metA={metA} metB={metB} runningA={runningA} runningB={runningB} measuresA={measuresA} measuresB={measuresB} enabled={lightsMode} />
-      {circleMode && (
-        <div style={{ position:"fixed", inset:0, zIndex:999, display:"flex", alignItems:"center", justifyContent:"center", background:"#15171c" }}>
-          <div style={{ transform:"scale(1.7)" }}>
-            {mode === "libre" ? (
-              <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB}
-                centerLabel={`${metA.subdivision}:${metB.subdivision}`} showSubtitle={false} showMcm={false}
-                totalAOverride={metA.subdivision} totalBOverride={metB.subdivision}
-                beatAOverride={metA.subTick} beatBOverride={metB.subTick}
-                durAOverride={60 / metA.bpm} durBOverride={60 / metB.bpm} />
-            ) : (
-              <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={isPolimetria} />
-            )}
-          </div>
-        </div>
-      )}
-      <FlashToggle on={flashOn} onToggle={() => setFlashOn((v) => { const n = !v; if (n) setCircleFullscreen(false); return n; })} />
-      <CircleFullscreenToggle on={circleFullscreen} onToggle={() => setCircleFullscreen((v) => { const n = !v; if (n) setFlashOn(false); return n; })} />
+      <BeatLights metA={metA} metB={metB} runningA={runningA} runningB={runningB} measuresA={measuresA} measuresB={measuresB} enabled={performanceMode} />
+      <FlashToggle on={flashOn} onToggle={() => setFlashOn((v) => !v)} />
       <DualSwitch on={dualOn} onToggle={toggleDual} />
       {performanceMode && practiceStatus.timerOn && (
         <div style={{
@@ -1446,6 +1411,13 @@ export default function DualMetronome() {
       {/* ── DUAL LIBRE ── */}
       {mode === "libre" && (
         <>
+          <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
+            <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB}
+              centerLabel={`${metA.subdivision}:${metB.subdivision}`} showSubtitle={false} showMcm={false}
+              totalAOverride={metA.subdivision} totalBOverride={metB.subdivision}
+              beatAOverride={metA.subTick} beatBOverride={metB.subTick}
+              durAOverride={60 / metA.bpm} durBOverride={60 / metB.bpm} />
+          </div>
           <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", maxWidth:880, margin:"0 auto" }}>
             <MetronomePanel color="A" state={metA} onChange={changeMetA} running={runningA} onToggle={toggleA} measures={measuresA} />
             <MetronomePanel color="B" state={metB} onChange={changeMetB} running={runningB} onToggle={toggleB} measures={measuresB} />
