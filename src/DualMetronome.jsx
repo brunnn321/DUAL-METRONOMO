@@ -18,7 +18,7 @@ const SOUNDS = [
 // figures: how each beat (pulso) gets subdivided — Dual Libre only
 const FIGURES = [
   { value:1 }, { value:2 }, { value:3 }, { value:4 }, { value:5 },
-  { value:6 }, { value:7 }, { value:9 }, { value:11 }, { value:13 },
+  { value:6 }, { value:7 }, { value:8 }, { value:9 }, { value:11 }, { value:13 }, { value:15 },
 ];
 
 const BASE_VALUES     = [2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 15];
@@ -808,7 +808,7 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB }) {
               <span style={{ color }}>●</span> {label} <span style={{ color:"#333" }}>· por compás</span>
             </div>
             <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-              {[2,3,4,5,6,7,8,9].map((n) => (
+              {[2,3,4,5,6,7,8,9,11,13,15].map((n) => (
                 <button key={n} onClick={() => set(n)} style={{
                   background: val===n ? color : "#252830",
                   border:`1px solid ${val===n ? color : "#3a3d47"}`,
