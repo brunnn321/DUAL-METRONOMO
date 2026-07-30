@@ -109,7 +109,7 @@ function CircularVisualizer({
   // vizStyle is controlled from the parent — this wrapper always has a CSS
   // transform (for the beat pulse), which creates a containing block for
   // position:fixed children, so the toggle button can't live in here
-  vizStyle,
+  vizStyle, fullscreen,
 }) {
   const [coincide, setCoincide] = useState(false);
   const tRef = useRef(null);
@@ -212,7 +212,7 @@ function CircularVisualizer({
           background: `radial-gradient(circle, ${coincide ? "#ffffff22" : `${CA}14`} 0%, transparent 70%)`,
           transition:"background 0.3s", pointerEvents:"none",
         }} />
-        <svg width={S} height={S} style={{ overflow:"visible", position:"relative" }}>
+        <svg width={fullscreen ? "82vmin" : S} height={fullscreen ? "82vmin" : S} viewBox={`0 0 ${S} ${S}`} style={{ overflow:"visible", position:"relative" }}>
           <defs>
             <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
               <stop offset="0%" stopColor={coincide ? "#ffffff33" : "#ffffff0a"} />
@@ -1356,15 +1356,15 @@ export default function DualMetronome() {
       <BeatLights metA={metA} metB={metB} runningA={runningA} runningB={runningB} measuresA={measuresA} measuresB={measuresB} enabled={lightsMode} />
       {circleFsMode && (
         <div style={{ position:"fixed", inset:0, zIndex:999, display:"flex", alignItems:"center", justifyContent:"center", background:"#15171c" }}>
-          <div style={{ transform:"scale(1.7)" }}>
+          <div>
             {mode === "libre" ? (
               <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB}
                 centerLabel={`${metA.subdivision}:${metB.subdivision}`} showSubtitle={false} showMcm={false}
                 totalAOverride={metA.subdivision} totalBOverride={metB.subdivision}
                 beatAOverride={metA.subTick} beatBOverride={metB.subTick}
-                durAOverride={60 / metA.bpm} durBOverride={60 / metB.bpm} vizStyle={vizStyle} />
+                durAOverride={60 / metA.bpm} durBOverride={60 / metB.bpm} vizStyle={vizStyle} fullscreen />
             ) : (
-              <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={isPolimetria} vizStyle={vizStyle} />
+              <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={isPolimetria} vizStyle={vizStyle} fullscreen />
             )}
           </div>
         </div>
