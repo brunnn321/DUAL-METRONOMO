@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Play, Square, Volume2, VolumeX, ChevronRight, Lightbulb } from "lucide-react";
 
 // ─── math ─────────────────────────────────────────────────────────────────────
@@ -633,7 +633,8 @@ function ProgressivePractice({ onBpmChange, onActivate, running, onStatus }) {
 const TIMER_MINUTES = [5, 10, 15, 20, 30, 45, 60];
 
 function playAlarm() {
-  const ctx = new AudioContext();
+  let ctx;
+  try { ctx = new AudioContext(); } catch { return; } // no audio available — timer still finishes silently
   [880, 1100, 1320].forEach((freq, i) => {
     const t = ctx.currentTime + i * 0.3;
     const osc = ctx.createOscillator(); const g = ctx.createGain();
@@ -985,27 +986,36 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap
 const DEFAULT_A = { bpm:120, baseBpm:120, timeSig:"4/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, subTick:-1, strongSound:"click", weakSound:"beep",  subdivision:1 };
 const DEFAULT_B = { bpm:90,  baseBpm:90,  timeSig:"3/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, subTick:-1, strongSound:"click", weakSound:"wood",  subdivision:1 };
 
+// remember the last configuration between sessions — only stable settings
+// (bpm, sounds, mode params), never live playback state (beat/subTick/running)
+const SETTINGS_KEY = "dualpulse-settings-v1";
+function loadSettings() {
+  try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null") ?? {}; }
+  catch { return {}; }
+}
+const savedSettings = loadSettings();
+
 // ─── main ─────────────────────────────────────────────────────────────────────
 export default function DualMetronome() {
   // mode — polimetría is the primary / default mode
-  const [mode, setMode] = useState("metrica");
-  const modeRef = useRef("metrica");
+  const [mode, setMode] = useState(savedSettings.mode ?? "metrica");
+  const modeRef = useRef(savedSettings.mode ?? "metrica");
 
   // polimetría params + refs (refs updated synchronously so restartNow can read them)
-  const [relBase,    setRelBase]    = useState(4);
-  const [relDeriv,   setRelDeriv]   = useState(5);
-  const [relBpmBase, setRelBpmBase] = useState(90);
-  const relBaseRef  = useRef(4);
-  const relDerivRef = useRef(5);
+  const [relBase,    setRelBase]    = useState(savedSettings.relBase ?? 4);
+  const [relDeriv,   setRelDeriv]   = useState(savedSettings.relDeriv ?? 5);
+  const [relBpmBase, setRelBpmBase] = useState(savedSettings.relBpmBase ?? 90);
+  const relBaseRef  = useRef(savedSettings.relBase ?? 4);
+  const relDerivRef = useRef(savedSettings.relDeriv ?? 5);
   const relMultRef = useRef(1);
 
   // polimetría (tercer modo) params
-  const [polyBpm,    setPolyBpm]    = useState(90);
-  const [polyBeatsA, setPolyBeatsA] = useState(4);
-  const [polyBeatsB, setPolyBeatsB] = useState(3);
-  const polyBpmRef    = useRef(90);
-  const polyBeatsARef = useRef(4);
-  const polyBeatsBRef = useRef(3);
+  const [polyBpm,    setPolyBpm]    = useState(savedSettings.polyBpm ?? 90);
+  const [polyBeatsA, setPolyBeatsA] = useState(savedSettings.polyBeatsA ?? 4);
+  const [polyBeatsB, setPolyBeatsB] = useState(savedSettings.polyBeatsB ?? 3);
+  const polyBpmRef    = useRef(savedSettings.polyBpm ?? 90);
+  const polyBeatsARef = useRef(savedSettings.polyBeatsA ?? 4);
+  const polyBeatsBRef = useRef(savedSettings.polyBeatsB ?? 3);
   const polyMultRef = useRef(1);
 
   // shared audio state
@@ -1014,14 +1024,16 @@ export default function DualMetronome() {
   const [dualOn,   setDualOn]   = useState(false);
   // metA/metB start already aligned with the default polimetría params
   // (relBase=4, relDeriv=5, relBpmBase=90) so the visualizer's ring counts
-  // and MCM match the "5:4" label from the very first render.
-  const [metA, setMetA] = useState(() => ({ ...DEFAULT_A, bpm:90,    baseBpm:90,    timeSig:"4/4" }));
-  const [metB, setMetB] = useState(() => ({ ...DEFAULT_B, bpm:112.5, baseBpm:112.5, timeSig:"5/4" }));
+  // and MCM match the "5:4" label from the very first render — unless a
+  // saved session overrides bpm/timeSig/sounds/subdivision/volume/muted
+  const [metA, setMetA] = useState(() => ({ ...DEFAULT_A, bpm:90,    baseBpm:90,    timeSig:"4/4", ...savedSettings.metA }));
+  const [metB, setMetB] = useState(() => ({ ...DEFAULT_B, bpm:112.5, baseBpm:112.5, timeSig:"5/4", ...savedSettings.metB }));
   const [measuresA, setMeasuresA] = useState(0);
   const [measuresB, setMeasuresB] = useState(0);
   const [flashOn, setFlashOn] = useState(false);
   const [vizStyle, setVizStyle] = useState("necklace"); // "rings" | "necklace" — shared across all 3 modes
   const [circleFullscreen, setCircleFullscreen] = useState(false);
+  const [audioError, setAudioError] = useState(null);
   // practice status reported by PracticeTimer / ProgressivePractice
   // (shown in the collapsed PRÁCTICA bar and as a corner countdown in lights mode)
   const [practiceStatus, setPracticeStatus] = useState({});
@@ -1104,6 +1116,18 @@ export default function DualMetronome() {
     sched(runBRef, metARef, metBRef, nextBRef, tickBRef, setMeasuresB, setMetB, +1);
   }, []);
 
+  // centralized AudioContext creation — some browsers (old Safari, strict
+  // autoplay policies, no audio hardware) throw here instead of failing
+  // silently later, so surface it to the user instead of a dead click
+  const createCtx = () => {
+    try {
+      return new AudioContext();
+    } catch {
+      setAudioError("No se pudo iniciar el audio en este navegador. Revisa los permisos de sonido o probá con otro navegador.");
+      return null;
+    }
+  };
+
   // ── restartNow ─────────────────────────────────────────────────────────────
   // Call AFTER writing new values into metARef / metBRef.
   // Immediately stops the current scheduler and restarts it from beat 0,
@@ -1115,7 +1139,8 @@ export default function DualMetronome() {
     ctxRef.current?.close(); ctxRef.current = null;
     runARef.current = false; runBRef.current = false;
     if (!wasA && !wasB) return; // nothing was playing, nothing to restart
-    const ctx = new AudioContext(); ctxRef.current = ctx;
+    const ctx = createCtx(); ctxRef.current = ctx;
+    if (!ctx) return;
     const t0  = ctx.currentTime + 0.05;
     if (wasA) { nextARef.current = t0; tickARef.current = 0; runARef.current = true; }
     if (wasB) { nextBRef.current = t0; tickBRef.current = 0; runBRef.current = true; }
@@ -1126,7 +1151,7 @@ export default function DualMetronome() {
 
   // ── engine ─────────────────────────────────────────────────────────────────
   const ensureCtx = () => {
-    if (!ctxRef.current || ctxRef.current.state === "closed") ctxRef.current = new AudioContext();
+    if (!ctxRef.current || ctxRef.current.state === "closed") ctxRef.current = createCtx();
     return ctxRef.current;
   };
   const hardStop = useCallback(() => {
@@ -1142,7 +1167,8 @@ export default function DualMetronome() {
     // defensive: never stack a second scheduler/context on top of a live one
     clearInterval(schedRef.current); schedRef.current = null;
     ctxRef.current?.close();
-    const ctx = new AudioContext(); ctxRef.current = ctx;
+    const ctx = createCtx(); ctxRef.current = ctx;
+    if (!ctx) return;
     const t0  = ctx.currentTime + 0.1;
     nextARef.current = t0; nextBRef.current = t0;
     tickARef.current = 0;  tickBRef.current = 0;
@@ -1342,6 +1368,21 @@ export default function DualMetronome() {
     if (!runARef.current || !runBRef.current) startDual();
   }, [startDual]);
 
+  // ── persist settings ────────────────────────────────────────────────────────
+  // only stable config, never live playback state — so this can't fire on
+  // every beat tick, only when the user actually changes a setting
+  const settingsSnapshot = useMemo(() => ({
+    mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB,
+    metA: { bpm:metA.bpm, baseBpm:metA.baseBpm, timeSig:metA.timeSig, subdivision:metA.subdivision, strongSound:metA.strongSound, weakSound:metA.weakSound, volume:metA.volume, muted:metA.muted },
+    metB: { bpm:metB.bpm, baseBpm:metB.baseBpm, timeSig:metB.timeSig, subdivision:metB.subdivision, strongSound:metB.strongSound, weakSound:metB.weakSound, volume:metB.volume, muted:metB.muted },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB,
+    metA.bpm, metA.baseBpm, metA.timeSig, metA.subdivision, metA.strongSound, metA.weakSound, metA.volume, metA.muted,
+    metB.bpm, metB.baseBpm, metB.timeSig, metB.subdivision, metB.strongSound, metB.weakSound, metB.volume, metB.muted]);
+  useEffect(() => {
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settingsSnapshot)); } catch { /* private mode or quota — skip persisting */ }
+  }, [settingsSnapshot]);
+
   // ── render ─────────────────────────────────────────────────────────────────
   const isMetrica    = mode === "metrica";
   const isPolimetria = mode === "polimetria";
@@ -1354,6 +1395,17 @@ export default function DualMetronome() {
   return (
     <div style={{ minHeight:"100vh", background:"#15171c", color:"#ddd", fontFamily:"system-ui,sans-serif", padding: performanceMode ? 0 : "24px 16px", boxSizing:"border-box" }}>
       <BeatLights metA={metA} metB={metB} runningA={runningA} runningB={runningB} measuresA={measuresA} measuresB={measuresB} enabled={lightsMode} />
+      {audioError && (
+        <div style={{
+          position:"fixed", top:0, left:0, right:0, zIndex:2000,
+          background:"#3d1010", borderBottom:"1px solid #ff4a4a", color:"#ffb4b4",
+          fontFamily:"monospace", fontSize:12, padding:"10px 16px",
+          display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+        }}>
+          <span>{audioError}</span>
+          <button onClick={() => setAudioError(null)} style={{ background:"none", border:"none", color:"#ffb4b4", cursor:"pointer", fontSize:16, lineHeight:1, padding:"0 4px" }}>×</button>
+        </div>
+      )}
       {circleFsMode && (
         <div style={{ position:"fixed", inset:0, zIndex:999, display:"flex", alignItems:"center", justifyContent:"center", background:"#15171c" }}>
           <div>
