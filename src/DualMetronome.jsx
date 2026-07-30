@@ -830,6 +830,25 @@ function FlashToggle({ on, onToggle }) {
   );
 }
 
+// ─── circle-only fullscreen toggle (top-right, next to FlashToggle) ──────────
+function CircleFullscreenToggle({ on, onToggle }) {
+  return (
+    <button onClick={onToggle} title={on ? "Salir de pantalla completa" : "Ver animación en pantalla completa"} style={{
+      position:"fixed", top:16, right:64, zIndex:1000,
+      display:"flex", alignItems:"center", justifyContent:"center",
+      width:40, height:40, borderRadius:10,
+      background: on ? "#eeeeee1a" : "#1e2028",
+      border:`1px solid ${on ? "#eee" : "#3a3d47"}`,
+      color: on ? "#eee" : "#555",
+      cursor:"pointer", transition:"all 0.15s",
+    }}>
+      <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <path d="M1 5V1h4M11 1h4v4M15 11v4h-4M5 15H1v-4" />
+      </svg>
+    </button>
+  );
+}
+
 // ─── sync volume + sound editor (DUAL SINC) ───────────────────────────────────
 function SyncControls({ metA, metB, onChangeA, onChangeB }) {
   const [open, setOpen] = useState(false);
@@ -1002,6 +1021,7 @@ export default function DualMetronome() {
   const [measuresB, setMeasuresB] = useState(0);
   const [flashOn, setFlashOn] = useState(false);
   const [vizStyle, setVizStyle] = useState("necklace"); // "rings" | "necklace" — shared across all 3 modes
+  const [circleFullscreen, setCircleFullscreen] = useState(false);
   // practice status reported by PracticeTimer / ProgressivePractice
   // (shown in the collapsed PRÁCTICA bar and as a corner countdown in lights mode)
   const [practiceStatus, setPracticeStatus] = useState({});
@@ -1326,13 +1346,31 @@ export default function DualMetronome() {
   const isMetrica    = mode === "metrica";
   const isPolimetria = mode === "polimetria";
   const centerLabel  = isMetrica ? `${relDeriv}:${relBase}` : isPolimetria ? `${polyBeatsA}:${polyBeatsB}` : undefined;
-  // full-screen color/performance view only while something is actually playing
-  const performanceMode = flashOn && (runningA || runningB);
+  // full-screen views — lights and circle are independent, mutually exclusive
+  const lightsMode = flashOn && (runningA || runningB);
+  const circleFsMode = circleFullscreen && (runningA || runningB);
+  const performanceMode = lightsMode || circleFsMode;
 
   return (
     <div style={{ minHeight:"100vh", background:"#15171c", color:"#ddd", fontFamily:"system-ui,sans-serif", padding: performanceMode ? 0 : "24px 16px", boxSizing:"border-box" }}>
-      <BeatLights metA={metA} metB={metB} runningA={runningA} runningB={runningB} measuresA={measuresA} measuresB={measuresB} enabled={performanceMode} />
-      <FlashToggle on={flashOn} onToggle={() => setFlashOn((v) => !v)} />
+      <BeatLights metA={metA} metB={metB} runningA={runningA} runningB={runningB} measuresA={measuresA} measuresB={measuresB} enabled={lightsMode} />
+      {circleFsMode && (
+        <div style={{ position:"fixed", inset:0, zIndex:999, display:"flex", alignItems:"center", justifyContent:"center", background:"#15171c" }}>
+          <div style={{ transform:"scale(1.7)" }}>
+            {mode === "libre" ? (
+              <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB}
+                centerLabel={`${metA.subdivision}:${metB.subdivision}`} showSubtitle={false} showMcm={false}
+                totalAOverride={metA.subdivision} totalBOverride={metB.subdivision}
+                beatAOverride={metA.subTick} beatBOverride={metB.subTick}
+                durAOverride={60 / metA.bpm} durBOverride={60 / metB.bpm} vizStyle={vizStyle} />
+            ) : (
+              <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={isPolimetria} vizStyle={vizStyle} />
+            )}
+          </div>
+        </div>
+      )}
+      <FlashToggle on={flashOn} onToggle={() => setFlashOn((v) => { const n = !v; if (n) setCircleFullscreen(false); return n; })} />
+      <CircleFullscreenToggle on={circleFullscreen} onToggle={() => setCircleFullscreen((v) => { const n = !v; if (n) setFlashOn(false); return n; })} />
       <button onClick={() => setVizStyle((v) => (v === "rings" ? "necklace" : "rings"))} title="Cambiar estilo de visualizador" style={{
         position:"fixed", top:16, left:16, zIndex:1000,
         width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center",
