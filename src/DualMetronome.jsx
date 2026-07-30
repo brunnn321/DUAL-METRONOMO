@@ -106,6 +106,10 @@ function CircularVisualizer({
   // overrides let Dual Libre drive the visual off its subdivision/subTick
   // instead of timeSig/beat (which are always 1 in that mode)
   totalAOverride, totalBOverride, beatAOverride, beatBOverride, durAOverride, durBOverride,
+  // vizStyle is controlled from the parent — this wrapper always has a CSS
+  // transform (for the beat pulse), which creates a containing block for
+  // position:fixed children, so the toggle button can't live in here
+  vizStyle,
 }) {
   const [coincide, setCoincide] = useState(false);
   const tRef = useRef(null);
@@ -117,7 +121,6 @@ function CircularVisualizer({
   const CA = "#ff6b4a", CB = "#4ad9ff";
   const S = 320, cx = 160, cy = 160, rA = 128, rB = 84;
   const pulse = (beatA === 0 || beatB === 0) && (runningA || runningB);
-  const [vizStyle, setVizStyle] = useState("necklace"); // "rings" | "necklace"
 
   useEffect(() => {
     if (beatA === 0 && beatB === 0 && (runningA || runningB)) {
@@ -204,17 +207,6 @@ function CircularVisualizer({
       transition: pulse ? "transform 0.04s" : "transform 0.25s ease-out",
     }}>
       <div style={{ position:"relative" }}>
-        <button onClick={() => setVizStyle((v) => (v === "rings" ? "necklace" : "rings"))} title="Cambiar estilo de visualizador" style={{
-          position:"fixed", top:16, left:16, zIndex:1000,
-          width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center",
-          background:"#ffd04a1a", border:"1px solid #ffd04a", borderRadius:10,
-          color:"#ffd04a", cursor:"pointer",
-          boxShadow:"0 0 10px #ffd04a44",
-        }}>
-          {vizStyle === "rings"
-            ? <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" /></svg>
-            : <svg width="16" height="16" viewBox="0 0 16 16"><polygon points="8,1 15,6 12,15 4,15 1,6" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>}
-        </button>
         <div style={{
           position:"absolute", inset:-30, borderRadius:"50%",
           background: `radial-gradient(circle, ${coincide ? "#ffffff22" : `${CA}14`} 0%, transparent 70%)`,
@@ -1009,6 +1001,7 @@ export default function DualMetronome() {
   const [measuresA, setMeasuresA] = useState(0);
   const [measuresB, setMeasuresB] = useState(0);
   const [flashOn, setFlashOn] = useState(false);
+  const [vizStyle, setVizStyle] = useState("necklace"); // "rings" | "necklace" — shared across all 3 modes
   // practice status reported by PracticeTimer / ProgressivePractice
   // (shown in the collapsed PRÁCTICA bar and as a corner countdown in lights mode)
   const [practiceStatus, setPracticeStatus] = useState({});
@@ -1340,6 +1333,17 @@ export default function DualMetronome() {
     <div style={{ minHeight:"100vh", background:"#15171c", color:"#ddd", fontFamily:"system-ui,sans-serif", padding: performanceMode ? 0 : "24px 16px", boxSizing:"border-box" }}>
       <BeatLights metA={metA} metB={metB} runningA={runningA} runningB={runningB} measuresA={measuresA} measuresB={measuresB} enabled={performanceMode} />
       <FlashToggle on={flashOn} onToggle={() => setFlashOn((v) => !v)} />
+      <button onClick={() => setVizStyle((v) => (v === "rings" ? "necklace" : "rings"))} title="Cambiar estilo de visualizador" style={{
+        position:"fixed", top:16, left:16, zIndex:1000,
+        width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center",
+        background:"#ffd04a1a", border:"1px solid #ffd04a", borderRadius:10,
+        color:"#ffd04a", cursor:"pointer",
+        boxShadow:"0 0 12px #ffd04a44",
+      }}>
+        {vizStyle === "rings"
+          ? <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" /></svg>
+          : <svg width="16" height="16" viewBox="0 0 16 16"><polygon points="8,1 15,6 12,15 4,15 1,6" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>}
+      </button>
       <DualSwitch on={dualOn} onToggle={toggleDual} />
       {performanceMode && practiceStatus.timerOn && (
         <div style={{
@@ -1367,7 +1371,7 @@ export default function DualMetronome() {
       {isMetrica && (
         <>
           <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
-            <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={false} />
+            <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={false} vizStyle={vizStyle} />
           </div>
           <div style={{ marginBottom:20 }}>
             <PoliPanel
@@ -1387,7 +1391,7 @@ export default function DualMetronome() {
       {isPolimetria && (
         <>
           <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
-            <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} />
+            <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} vizStyle={vizStyle} />
           </div>
           <div style={{ marginBottom:20 }}>
             <PolyMetriaPanel
@@ -1411,7 +1415,7 @@ export default function DualMetronome() {
               centerLabel={`${metA.subdivision}:${metB.subdivision}`} showSubtitle={false} showMcm={false}
               totalAOverride={metA.subdivision} totalBOverride={metB.subdivision}
               beatAOverride={metA.subTick} beatBOverride={metB.subTick}
-              durAOverride={60 / metA.bpm} durBOverride={60 / metB.bpm} />
+              durAOverride={60 / metA.bpm} durBOverride={60 / metB.bpm} vizStyle={vizStyle} />
           </div>
           <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", maxWidth:880, margin:"0 auto" }}>
             <MetronomePanel color="A" state={metA} onChange={changeMetA} running={runningA} onToggle={toggleA} measures={measuresA} />
