@@ -717,16 +717,20 @@ function PracticeTimer({ onFinish, onStatus }) {
 // ─── phase-sync info (DUAL LIBRE) ─────────────────────────────────────────────
 // Two independent integer BPMs starting together realign exactly every
 // 60/gcd(bpmA,bpmB) seconds. Shows that estimate and an opt-in auto-stop.
-function PhaseSyncInfo({ bpmA, bpmB, autoStop, onAutoStopToggle }) {
+function PhaseSyncInfo({ bpmA, bpmB, autoStop, onAutoStopToggle, pulseCountA, running }) {
   const g = gcd(Math.round(bpmA), Math.round(bpmB)) || 1;
   const seconds = 60 / g;
+  const targetA = Math.round(bpmA) / g;
   const fmt = (s) => s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s/60)}m ${Math.round(s%60)}s`;
   const same = Math.round(bpmA) === Math.round(bpmB);
+  // live countdown, ticks down exactly once per real pulse of A — never a
+  // wall-clock timer, so it always matches what's actually sounding
+  const remaining = pulseCountA === 0 ? targetA : targetA - (pulseCountA % targetA || targetA);
 
   return (
     <div style={{ maxWidth:880, margin:"0 auto 18px", background:"#1e2028", borderRadius:12, border:"1px solid #252830", padding:"12px 18px", display:"flex", alignItems:"center", gap:14 }}>
       <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:20, fontWeight:700, color: same ? "#444" : "#ffd04a" }}>
-        {same ? "—" : fmt(seconds)}
+        {same ? "—" : running ? remaining : fmt(seconds)}
       </div>
       <div style={{ flex:1 }} />
       <button onClick={() => onAutoStopToggle(!autoStop)} disabled={same} title="Detener al realinearse" style={{
@@ -931,8 +935,9 @@ function SyncControls({ metA, metB, onChangeA, onChangeB }) {
 }
 
 // ─── polimetría panel ─────────────────────────────────────────────────────────
-function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap, autoStop, onAutoStopToggle }) {
+function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap, autoStop, onAutoStopToggle, pulseCount, running }) {
   const lcmAB = lcm(beatsA, beatsB);
+  const remaining = pulseCount === 0 ? lcmAB : lcmAB - (pulseCount % lcmAB || lcmAB);
   const [open, setOpen] = useState(true);
   return (
     <div style={{ background:"#1e2028", borderRadius:12, maxWidth:680, margin:"0 auto", border:"1px solid #252830" }}>
@@ -1000,8 +1005,9 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap
           <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1, marginBottom:4 }}>COINCIDENCIA</div>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
             <div style={{ color:"#666", fontFamily:"monospace", fontSize:12 }}>
-              El <span style={{ color:"#eee" }}>tiempo&nbsp;1</span> coincide cada{" "}
-              <span style={{ color:"#4aff9a", fontWeight:700 }}>{lcmAB}</span> pulsos
+              {running
+                ? <><span style={{ color:"#4aff9a", fontWeight:700, fontSize:16 }}>{remaining}</span> pulsos</>
+                : <>cada <span style={{ color:"#4aff9a", fontWeight:700 }}>{lcmAB}</span> pulsos</>}
             </div>
             <button onClick={() => onAutoStopToggle(!autoStop)} title="Detener al completar el ciclo" style={{
               width:26, height:26, borderRadius:7, display:"flex", alignItems:"center", justifyContent:"center",
@@ -1072,20 +1078,19 @@ export default function DualMetronome() {
   const [circleFullscreen, setCircleFullscreen] = useState(false);
   const [audioError, setAudioError] = useState(null);
 
-  // ── phase auto-stop (DUAL POLY): stop automatically the first time both
-  // downbeats coincide again after the cycle actually started — the very
-  // first coincidence (t=0, right when play is pressed) doesn't count
+  // ── phase auto-stop (DUAL POLY): stop automatically the first time the
+  // pulse cycle completes (lcm of beatsA/beatsB) after it actually started
   const [polyAutoStop, setPolyAutoStop] = useState(false);
-  const polyCoincideCountRef = useRef(0);
 
   // ── phase auto-stop (DUAL LIBRE): two independent integer BPMs realign
-  // every 60/gcd(bpmA,bpmB) seconds — at that instant A has done bpmA/gcd
-  // pulses and B has done bpmB/gcd pulses. Only meaningful when both start
+  // every 60/gcd(bpmA,bpmB) seconds. Only meaningful when both start
   // together (the DUAL switch), so it's not offered on the individual
   // per-metronome PLAY buttons.
   const [libreAutoStop, setLibreAutoStop] = useState(false);
-  const librePulseARef = useRef(0);
-  const librePulseBRef = useRef(0);
+  // real, beat-synced pulse counters (never a wall-clock timer) — feed both
+  // the POLY/LIBRE cycle countdowns and their auto-stop triggers
+  const [pulseCountA, setPulseCountA] = useState(0);
+  const [pulseCountB, setPulseCountB] = useState(0);
   // practice status reported by PracticeTimer / ProgressivePractice
   // (shown in the collapsed PRÁCTICA bar and as a corner countdown in lights mode)
   const [practiceStatus, setPracticeStatus] = useState({});
@@ -1191,7 +1196,7 @@ export default function DualMetronome() {
     ctxRef.current?.close(); ctxRef.current = null;
     runARef.current = false; runBRef.current = false;
     if (!wasA && !wasB) return; // nothing was playing, nothing to restart
-    polyCoincideCountRef.current = 0; // params changed mid-flight — cycle starts over
+    setPulseCountA(0); setPulseCountB(0); // params changed mid-flight — cycle starts over
     const ctx = createCtx(); ctxRef.current = ctx;
     if (!ctx) return;
     const t0  = ctx.currentTime + 0.05;
@@ -1215,50 +1220,53 @@ export default function DualMetronome() {
     setRunningA(false); setRunningB(false); setDualOn(false);
     setMetA((p) => ({ ...p, beat:-1 })); setMetB((p) => ({ ...p, beat:-1 }));
     setMeasuresA(0); setMeasuresB(0);
+    setPulseCountA(0); setPulseCountB(0);
   }, []);
 
-  // DUAL POLY only: both metronomes share the same tempo, so beat A===0 and
-  // beat B===0 landing together only happens at t=0 and at every multiple of
-  // lcm(beatsA, beatsB) pulses after that — the true "cycle complete" point
+  // Real, beat-synced pulse counters — increment exactly once per actual
+  // audio pulse (subTick hits 0 on every main tick, in every mode), never on
+  // a wall-clock timer. Both POLY's cycle countdown and LIBRE's phase
+  // countdown are derived from these, so what's on screen always matches
+  // what's actually sounding.
   useEffect(() => {
-    if (mode !== "polimetria" || !polyAutoStop) return;
-    if (metA.beat === 0 && metB.beat === 0 && (runningA || runningB)) {
-      polyCoincideCountRef.current++;
-      if (polyCoincideCountRef.current > 1) hardStop();
-    }
-  }, [metA.beat, metB.beat, mode, polyAutoStop, runningA, runningB, hardStop]);
-
-  // DUAL LIBRE: count real pulses independently for A and B (subTick===0 is
-  // the main-beat marker regardless of each side's FIGURA/subdivision), then
-  // compare against the exact gcd-based target — fires once both sides have
-  // completed their share of the cycle.
-  useEffect(() => {
-    if (mode !== "libre" || !libreAutoStop || !dualOn) return;
+    if (!(mode === "libre" || mode === "polimetria") || !runningA) return;
     if (metA.subTick !== 0) return;
-    librePulseARef.current++;
-    const g = gcd(Math.round(metA.bpm), Math.round(metB.bpm)) || 1;
-    const targetA = Math.round(metA.bpm) / g;
-    const targetB = Math.round(metB.bpm) / g;
-    if (librePulseARef.current >= targetA && librePulseBRef.current >= targetB) hardStop();
+    setPulseCountA((n) => n + 1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metA.subTick]);
   useEffect(() => {
-    if (mode !== "libre" || !libreAutoStop || !dualOn) return;
+    if (!(mode === "libre" || mode === "polimetria") || !runningB) return;
     if (metB.subTick !== 0) return;
-    librePulseBRef.current++;
+    setPulseCountB((n) => n + 1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metB.subTick]);
+
+  // DUAL POLY: both sides share tempo, so pulseCountA already reflects total
+  // pulses elapsed for both — the cycle completes every lcm(beatsA,beatsB).
+  useEffect(() => {
+    if (mode !== "polimetria" || !polyAutoStop) return;
+    const target = lcm(Math.max(1, polyBeatsARef.current), Math.max(1, polyBeatsBRef.current));
+    if (pulseCountA > 0 && pulseCountA % target === 0) hardStop();
+  }, [pulseCountA, mode, polyAutoStop, hardStop]);
+
+  // DUAL LIBRE: two independent integer BPMs realign once A has done
+  // bpmA/gcd pulses and B has done bpmB/gcd pulses — reached at the same
+  // real instant for both, so checking either counter's own target is enough.
+  useEffect(() => {
+    if (mode !== "libre" || !libreAutoStop || !dualOn) return;
     const g = gcd(Math.round(metA.bpm), Math.round(metB.bpm)) || 1;
     const targetA = Math.round(metA.bpm) / g;
     const targetB = Math.round(metB.bpm) / g;
-    if (librePulseARef.current >= targetA && librePulseBRef.current >= targetB) hardStop();
+    if (targetA > 0 && pulseCountA > 0 && pulseCountA % targetA === 0 &&
+        targetB > 0 && pulseCountB > 0 && pulseCountB % targetB === 0) hardStop();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [metB.subTick]);
+  }, [pulseCountA, pulseCountB]);
 
   const startDual = useCallback(() => {
     // defensive: never stack a second scheduler/context on top of a live one
     clearInterval(schedRef.current); schedRef.current = null;
     ctxRef.current?.close();
-    polyCoincideCountRef.current = 0; // fresh cycle — the first coincidence right at t=0 shouldn't trigger auto-stop
-    librePulseARef.current = 0; librePulseBRef.current = 0;
+    setPulseCountA(0); setPulseCountB(0); // fresh cycle
     const ctx = createCtx(); ctxRef.current = ctx;
     if (!ctx) return;
     const t0  = ctx.currentTime + 0.1;
@@ -1581,6 +1589,7 @@ export default function DualMetronome() {
               onBpm={handlePolyBpm} onBeatsA={handlePolyBeatsA} onBeatsB={handlePolyBeatsB}
               onTap={handlePolyTap}
               autoStop={polyAutoStop} onAutoStopToggle={setPolyAutoStop}
+              pulseCount={pulseCountA} running={runningA || runningB}
             />
           </div>
           <SyncControls metA={metA} metB={metB} onChangeA={changeMetA} onChangeB={changeMetB} />
@@ -1600,7 +1609,8 @@ export default function DualMetronome() {
               beatAOverride={metA.subTick} beatBOverride={metB.subTick}
               durAOverride={60 / metA.bpm} durBOverride={60 / metB.bpm} vizStyle={vizStyle} />
           </div>
-          <PhaseSyncInfo bpmA={metA.bpm} bpmB={metB.bpm} autoStop={libreAutoStop} onAutoStopToggle={setLibreAutoStop} />
+          <PhaseSyncInfo bpmA={metA.bpm} bpmB={metB.bpm} autoStop={libreAutoStop} onAutoStopToggle={setLibreAutoStop}
+            pulseCountA={pulseCountA} running={dualOn} />
           <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", maxWidth:880, margin:"0 auto" }}>
             <MetronomePanel color="A" state={metA} onChange={changeMetA} running={runningA} onToggle={toggleA} measures={measuresA} />
             <MetronomePanel color="B" state={metB} onChange={changeMetB} running={runningB} onToggle={toggleB} measures={measuresB} />
