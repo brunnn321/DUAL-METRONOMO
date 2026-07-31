@@ -720,34 +720,22 @@ function PracticeTimer({ onFinish, onStatus }) {
 function PhaseSyncInfo({ bpmA, bpmB, autoStop, onAutoStopToggle }) {
   const g = gcd(Math.round(bpmA), Math.round(bpmB)) || 1;
   const seconds = 60 / g;
-  const pulsesA = Math.round(bpmA) / g;
-  const pulsesB = Math.round(bpmB) / g;
   const fmt = (s) => s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s/60)}m ${Math.round(s%60)}s`;
   const same = Math.round(bpmA) === Math.round(bpmB);
 
   return (
-    <div style={{ maxWidth:880, margin:"0 auto 18px", background:"#1e2028", borderRadius:12, border:"1px solid #252830", padding:"14px 18px", display:"flex", flexDirection:"column", gap:10 }}>
-      <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:2 }}>SINCRONIZACIÓN DE FASE</div>
-      {same ? (
-        <div style={{ color:"#666", fontFamily:"monospace", fontSize:12 }}>Mismo BPM en A y B — no hay desfase que resolver.</div>
-      ) : (
-        <div style={{ color:"#999", fontFamily:"monospace", fontSize:12, lineHeight:1.7 }}>
-          A y B vuelven a coincidir exactamente en{" "}
-          <span style={{ color:"#ffd04a", fontWeight:700 }}>{fmt(seconds)}</span>
-          {" "}({pulsesA} pulsos de A · {pulsesB} pulsos de B)
-        </div>
-      )}
-      <button onClick={() => onAutoStopToggle(!autoStop)} disabled={same} style={{
-        display:"flex", alignItems:"center", gap:9, background: autoStop ? "#ffd04a14" : "#15171c",
-        border:`1px solid ${autoStop ? "#ffd04a" : "#252830"}`, borderRadius:8,
-        padding:"9px 13px", cursor: same ? "default" : "pointer", textAlign:"left", opacity: same ? 0.4 : 1,
+    <div style={{ maxWidth:880, margin:"0 auto 18px", background:"#1e2028", borderRadius:12, border:"1px solid #252830", padding:"12px 18px", display:"flex", alignItems:"center", gap:14 }}>
+      <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:20, fontWeight:700, color: same ? "#444" : "#ffd04a" }}>
+        {same ? "—" : fmt(seconds)}
+      </div>
+      <div style={{ flex:1 }} />
+      <button onClick={() => onAutoStopToggle(!autoStop)} disabled={same} title="Detener al realinearse" style={{
+        width:30, height:30, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center",
+        background: autoStop ? "#ffd04a1a" : "#15171c",
+        border:`1px solid ${autoStop ? "#ffd04a" : "#3a3d47"}`,
+        color: autoStop ? "#ffd04a" : "#555", cursor: same ? "default" : "pointer", opacity: same ? 0.4 : 1,
       }}>
-        <div style={{ width:16, height:16, borderRadius:4, border:`1.5px solid ${autoStop ? "#ffd04a" : "#555"}`, background: autoStop ? "#ffd04a" : "none", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
-          {autoStop && <span style={{ color:"#15171c", fontSize:11, fontWeight:900, lineHeight:1 }}>✓</span>}
-        </div>
-        <span style={{ color: autoStop ? "#ffd04a" : "#777", fontFamily:"monospace", fontSize:11 }}>
-          Detener automáticamente al realinearse (solo con INICIAR/DETENER general)
-        </span>
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="8" cy="8" r="6.5" /><rect x="5.5" y="5.5" width="5" height="5" /></svg>
       </button>
     </div>
   );
@@ -1010,24 +998,22 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap
         </div>
         <div style={{ flex:1 }}>
           <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1, marginBottom:4 }}>COINCIDENCIA</div>
-          <div style={{ color:"#666", fontFamily:"monospace", fontSize:12, lineHeight:1.8 }}>
-            El <span style={{ color:"#eee" }}>tiempo&nbsp;1</span> coincide cada{" "}
-            <span style={{ color:"#4aff9a", fontWeight:700 }}>{lcmAB}</span> pulsos
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <div style={{ color:"#666", fontFamily:"monospace", fontSize:12 }}>
+              El <span style={{ color:"#eee" }}>tiempo&nbsp;1</span> coincide cada{" "}
+              <span style={{ color:"#4aff9a", fontWeight:700 }}>{lcmAB}</span> pulsos
+            </div>
+            <button onClick={() => onAutoStopToggle(!autoStop)} title="Detener al completar el ciclo" style={{
+              width:26, height:26, borderRadius:7, display:"flex", alignItems:"center", justifyContent:"center",
+              background: autoStop ? "#4aff9a1a" : "#15171c",
+              border:`1px solid ${autoStop ? "#4aff9a" : "#3a3d47"}`,
+              color: autoStop ? "#4aff9a" : "#555", cursor:"pointer", flexShrink:0,
+            }}>
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="8" cy="8" r="6.5" /><rect x="5.5" y="5.5" width="5" height="5" /></svg>
+            </button>
           </div>
         </div>
       </div>
-      <button onClick={() => onAutoStopToggle(!autoStop)} style={{
-        display:"flex", alignItems:"center", gap:9, background: autoStop ? "#4aff9a14" : "#15171c",
-        border:`1px solid ${autoStop ? "#4aff9a" : "#252830"}`, borderRadius:8,
-        padding:"10px 14px", cursor:"pointer", textAlign:"left",
-      }}>
-        <div style={{ width:16, height:16, borderRadius:4, border:`1.5px solid ${autoStop ? "#4aff9a" : "#555"}`, background: autoStop ? "#4aff9a" : "none", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
-          {autoStop && <span style={{ color:"#15171c", fontSize:11, fontWeight:900, lineHeight:1 }}>✓</span>}
-        </div>
-        <span style={{ color: autoStop ? "#4aff9a" : "#777", fontFamily:"monospace", fontSize:11 }}>
-          Detener automáticamente al completar el ciclo ({lcmAB} pulsos)
-        </span>
-      </button>
       </div>
     </div>
   );
