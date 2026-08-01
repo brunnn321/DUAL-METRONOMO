@@ -140,14 +140,17 @@ function CircularVisualizer({
   const S = 320, cx = 160, cy = 160, rA = 128, rB = 84, rCycle = rA + 20;
   const pulse = (beatA === 0 || beatB === 0) && (runningA || runningB);
 
-  // sync ring: follows A's or B's real pulses (tap the playhead to switch)
+  // sync ring: follows A's or B's real pulses (tap the playhead to switch).
+  // Pulse 1 is the reference click where A and B start aligned, so it sits
+  // AT the top (index 0) — the ring then fills and only returns to the top
+  // on the pulse that actually lands back in phase (index 0 again).
   const [syncSource, setSyncSource] = useState("A");
   const cycleTarget = syncSource === "A" ? cycleTargetA : cycleTargetB;
   const cyclePulse  = syncSource === "A" ? cyclePulseA  : cyclePulseB;
-  const cycleCompleted = !cycleTarget ? 0 : (cyclePulse === 0 ? 0 : (cyclePulse % cycleTarget || cycleTarget));
-  const cycleFrac = cycleTarget ? cycleCompleted / cycleTarget : 0;
-  const cycleRemaining = cycleTarget ? cycleTarget - cycleCompleted : 0;
-  const atSync = showCycleRing && cycleTarget > 0 && cyclePulse > 0 && cycleCompleted === cycleTarget;
+  const cycleIndex = !cycleTarget ? 0 : (cyclePulse > 0 ? (cyclePulse - 1) % cycleTarget : 0);
+  const cycleFrac = cycleTarget ? cycleIndex / cycleTarget : 0;
+  const cycleRemaining = cycleTarget ? cycleTarget - cycleIndex : 0;
+  const atSync = showCycleRing && cycleTarget > 0 && cyclePulse > 1 && cycleIndex === 0;
 
   // brief shared glow on A and B rings the instant the cycle actually closes
   const [syncFlash, setSyncFlash] = useState(false);
@@ -776,8 +779,10 @@ function PhaseSyncInfo({ bpmA, bpmB, pulseCountA, running }) {
   const fmt = (s) => s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s/60)}m ${Math.round(s%60)}s`;
   const same = Math.round(bpmA) === Math.round(bpmB);
   // live countdown, ticks down exactly once per real pulse of A — never a
-  // wall-clock timer, so it always matches what's actually sounding
-  const remaining = pulseCountA === 0 ? targetA : targetA - (pulseCountA % targetA || targetA);
+  // wall-clock timer, so it always matches what's actually sounding.
+  // Pulse 1 is the reference beat (A and B start aligned) — realignment
+  // actually lands targetA pulses later, on pulse (targetA + 1).
+  const remaining = pulseCountA <= 0 ? targetA : targetA - ((pulseCountA - 1) % targetA);
 
   return (
     <div style={{ maxWidth:880, margin:"0 auto 18px", background:"#1e2028", borderRadius:12, border:"1px solid #252830", padding:"12px 18px", display:"flex", alignItems:"center", gap:14 }}>
@@ -980,7 +985,9 @@ function SyncControls({ metA, metB, onChangeA, onChangeB }) {
 // ─── polimetría panel ─────────────────────────────────────────────────────────
 function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap, pulseCount, running }) {
   const lcmAB = lcm(beatsA, beatsB);
-  const remaining = pulseCount === 0 ? lcmAB : lcmAB - (pulseCount % lcmAB || lcmAB);
+  // pulse 1 is the reference beat (A and B start aligned) — the cycle
+  // actually closes lcmAB pulses later, on pulse (lcmAB + 1)
+  const remaining = pulseCount <= 0 ? lcmAB : lcmAB - ((pulseCount - 1) % lcmAB);
   const [open, setOpen] = useState(true);
   return (
     <div style={{ background:"#1e2028", borderRadius:12, maxWidth:680, margin:"0 auto", border:"1px solid #252830" }}>
