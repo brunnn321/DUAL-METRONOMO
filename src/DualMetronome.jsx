@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Play, Square, Volume2, VolumeX, ChevronRight, Lightbulb } from "lucide-react";
-
-// ─── math ─────────────────────────────────────────────────────────────────────
-const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
-const lcm = (a, b) => (a * b) / gcd(a, b);
+// phase/cycle math lives in its own module so it can be unit-tested — see phase.test.js
+import { lcm, polyCycleTarget, libreCycleTargets, cycleIndex, cycleRemaining, isSyncPulse } from "./phase.js";
 
 // ─── constants ────────────────────────────────────────────────────────────────
 const beatsPerMeasure = (sig) => parseInt(sig.split("/")[0]);
@@ -147,10 +145,10 @@ function CircularVisualizer({
   const [syncSource, setSyncSource] = useState("A");
   const cycleTarget = syncSource === "A" ? cycleTargetA : cycleTargetB;
   const cyclePulse  = syncSource === "A" ? cyclePulseA  : cyclePulseB;
-  const cycleIndex = !cycleTarget ? 0 : (cyclePulse > 0 ? (cyclePulse - 1) % cycleTarget : 0);
-  const cycleFrac = cycleTarget ? cycleIndex / cycleTarget : 0;
-  const cycleRemaining = cycleTarget ? cycleTarget - cycleIndex : 0;
-  const atSync = showCycleRing && cycleTarget > 0 && cyclePulse > 1 && cycleIndex === 0;
+  const idx = cycleIndex(cyclePulse, cycleTarget);
+  const cycleFrac = cycleTarget ? idx / cycleTarget : 0;
+  const remainingPulses = cycleRemaining(cyclePulse, cycleTarget);
+  const atSync = !!showCycleRing && isSyncPulse(cyclePulse, cycleTarget);
 
   // brief shared glow on A and B rings the instant the cycle actually closes
   const [syncFlash, setSyncFlash] = useState(false);
@@ -261,8 +259,8 @@ function CircularVisualizer({
               <circle cx={cx} cy={cy} r={rCycle} fill="none" stroke="#BA751733" strokeWidth={2} />
               {cycleFrac > 0 && (
                 <path d={cycleArcPath(cx, cy, rCycle, cycleFrac, true)} fill="none"
-                  stroke="#EF9F27" strokeWidth={cycleRemaining <= 2 ? 4 : 2} strokeLinecap="round"
-                  style={{ filter: cycleRemaining <= 2 ? "drop-shadow(0 0 6px #EF9F27)" : "none" }} />
+                  stroke="#EF9F27" strokeWidth={remainingPulses <= 2 ? 4 : 2} strokeLinecap="round"
+                  style={{ filter: remainingPulses <= 2 ? "drop-shadow(0 0 6px #EF9F27)" : "none" }} />
               )}
               {(() => {
                 const [px, py] = circlePoint(cx, cy, rCycle, cycleFrac, true);
@@ -773,16 +771,12 @@ function PracticeTimer({ onFinish, onStatus }) {
 // Two independent integer BPMs starting together realign exactly every
 // 60/gcd(bpmA,bpmB) seconds. Shows that estimate and an opt-in auto-stop.
 function PhaseSyncInfo({ bpmA, bpmB, pulseCountA, running }) {
-  const g = gcd(Math.round(bpmA), Math.round(bpmB)) || 1;
-  const seconds = 60 / g;
-  const targetA = Math.round(bpmA) / g;
+  const { targetA, seconds } = libreCycleTargets(bpmA, bpmB);
   const fmt = (s) => s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s/60)}m ${Math.round(s%60)}s`;
   const same = Math.round(bpmA) === Math.round(bpmB);
   // live countdown, ticks down exactly once per real pulse of A — never a
-  // wall-clock timer, so it always matches what's actually sounding.
-  // Pulse 1 is the reference beat (A and B start aligned) — realignment
-  // actually lands targetA pulses later, on pulse (targetA + 1).
-  const remaining = pulseCountA <= 0 ? targetA : targetA - ((pulseCountA - 1) % targetA);
+  // wall-clock timer, so it always matches what's actually sounding
+  const remaining = cycleRemaining(pulseCountA, targetA);
 
   return (
     <div style={{ maxWidth:880, margin:"0 auto 18px", background:"#1e2028", borderRadius:12, border:"1px solid #252830", padding:"12px 18px", display:"flex", alignItems:"center", gap:14 }}>
@@ -985,9 +979,7 @@ function SyncControls({ metA, metB, onChangeA, onChangeB }) {
 // ─── polimetría panel ─────────────────────────────────────────────────────────
 function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap, pulseCount, running }) {
   const lcmAB = lcm(beatsA, beatsB);
-  // pulse 1 is the reference beat (A and B start aligned) — the cycle
-  // actually closes lcmAB pulses later, on pulse (lcmAB + 1)
-  const remaining = pulseCount <= 0 ? lcmAB : lcmAB - ((pulseCount - 1) % lcmAB);
+  const remaining = cycleRemaining(pulseCount, lcmAB);
   const [open, setOpen] = useState(true);
   return (
     <div style={{ background:"#1e2028", borderRadius:12, maxWidth:680, margin:"0 auto", border:"1px solid #252830" }}>
@@ -1498,10 +1490,8 @@ export default function DualMetronome() {
   const isPolimetria = mode === "polimetria";
   const centerLabel  = isMetrica ? `${relDeriv}:${relBase}` : isPolimetria ? `${polyBeatsA}:${polyBeatsB}` : undefined;
   // phase-sync cycle ring targets — real pulse counts, no wall-clock timers
-  const polyCycleTarget = lcm(Math.max(1, polyBeatsA), Math.max(1, polyBeatsB));
-  const libreGcd = gcd(Math.round(metA.bpm), Math.round(metB.bpm)) || 1;
-  const libreCycleTargetA = Math.round(metA.bpm) / libreGcd;
-  const libreCycleTargetB = Math.round(metB.bpm) / libreGcd;
+  const polyTarget = polyCycleTarget(polyBeatsA, polyBeatsB);
+  const { targetA: libreCycleTargetA, targetB: libreCycleTargetB } = libreCycleTargets(metA.bpm, metB.bpm);
   // full-screen views — lights and circle are independent, mutually exclusive
   const lightsMode = flashOn && (runningA || runningB);
   const circleFsMode = circleFullscreen && (runningA || runningB);
@@ -1534,7 +1524,7 @@ export default function DualMetronome() {
                 cyclePulseA={pulseCountA} cyclePulseB={pulseCountB} />
             ) : (
               <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={isPolimetria} vizStyle={vizStyle} fullscreen
-                showCycleRing={isPolimetria} cycleTargetA={polyCycleTarget} cycleTargetB={polyCycleTarget}
+                showCycleRing={isPolimetria} cycleTargetA={polyTarget} cycleTargetB={polyTarget}
                 cyclePulseA={pulseCountA} cyclePulseB={pulseCountA} />
             )}
           </div>
@@ -1601,7 +1591,7 @@ export default function DualMetronome() {
         <>
           <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
             <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} vizStyle={vizStyle}
-              showCycleRing cycleTargetA={polyCycleTarget} cycleTargetB={polyCycleTarget}
+              showCycleRing cycleTargetA={polyTarget} cycleTargetB={polyTarget}
               cyclePulseA={pulseCountA} cyclePulseB={pulseCountA} />
           </div>
           <div style={{ marginBottom:20 }}>
