@@ -19,6 +19,13 @@ export function libreCycleTargets(bpmA, bpmB) {
   return { targetA: a / g, targetB: b / g, seconds: 60 / g };
 }
 
+// DUAL SINC: both metronomes span the same cycle, so B's tempo follows from
+// how many pulses each side fits into it. `mult` is the ½ / ×1 / ×2 switch.
+export function derivedBpm(bpmBase, base, deriv, mult = 1) {
+  const b = Math.max(1, base);
+  return (bpmBase * mult) * deriv / b;
+}
+
 // Position of a pulse inside its cycle, 0 = in phase (12 o'clock).
 // pulseCount is 1-based: pulse 1 is the reference click where A and B start
 // aligned, so it maps to index 0 — the cycle only returns to 0 on the pulse

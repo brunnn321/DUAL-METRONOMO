@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Play, Square, Volume2, VolumeX, ChevronRight, Lightbulb } from "lucide-react";
 // phase/cycle math lives in its own module so it can be unit-tested — see phase.test.js
-import { lcm, polyCycleTarget, libreCycleTargets, cycleIndex, cycleRemaining, isSyncPulse } from "./phase.js";
+import { lcm, polyCycleTarget, libreCycleTargets, cycleIndex, cycleRemaining, isSyncPulse, derivedBpm } from "./phase.js";
+import { loadSettings, saveSettings } from "./settings.js";
 
 // ─── constants ────────────────────────────────────────────────────────────────
 const beatsPerMeasure = (sig) => parseInt(sig.split("/")[0]);
@@ -330,7 +331,7 @@ function CircularVisualizer({
 // ─── polimetría panel ─────────────────────────────────────────────────────────
 function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap }) {
   const ratio  = `${derivado}:${base}`;
-  const bpmB   = bpmBase * derivado / base;
+  const bpmB   = derivedBpm(bpmBase, base, derivado);
   const fmtBpm = (v) => Number.isInteger(v) ? v : v.toFixed(2);
   const [open, setOpen] = useState(true);
 
@@ -1063,11 +1064,6 @@ const DEFAULT_B = { bpm:90,  baseBpm:90,  timeSig:"3/4", volume:0.7, muted:false
 
 // remember the last configuration between sessions — only stable settings
 // (bpm, sounds, mode params), never live playback state (beat/subTick/running)
-const SETTINGS_KEY = "dualpulse-settings-v1";
-function loadSettings() {
-  try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null") ?? {}; }
-  catch { return {}; }
-}
 const savedSettings = loadSettings();
 
 // ─── main ─────────────────────────────────────────────────────────────────────
@@ -1326,7 +1322,7 @@ export default function DualMetronome() {
   // Update both refs and state, then restart so there is zero phase drift.
   const applyPoliParams = useCallback((bpmBase, base, deriv) => {
     const eff  = bpmBase * relMultRef.current; // ×0.5 / ×1 / ×2
-    const bpmB = eff * deriv / base;
+    const bpmB = derivedBpm(bpmBase, base, deriv, relMultRef.current);
     // subdivision:1 — las FIGURAS de Dual Libre no aplican en este modo
     metARef.current = { ...metARef.current, bpm: eff,  timeSig: `${base}/4`,  subdivision:1 };
     metBRef.current = { ...metBRef.current, bpm: bpmB, timeSig: `${deriv}/4`, subdivision:1 };
@@ -1413,7 +1409,7 @@ export default function DualMetronome() {
     hardStop();
     setMode(newMode); modeRef.current = newMode;
     if (newMode === "metrica") {
-      const bpmB = relBpmBase * relDerivRef.current / relBaseRef.current;
+      const bpmB = derivedBpm(relBpmBase, relBaseRef.current, relDerivRef.current);
       metARef.current = { ...metARef.current, bpm: relBpmBase, timeSig: `${relBaseRef.current}/4`,  subdivision:1 };
       metBRef.current = { ...metBRef.current, bpm: bpmB,       timeSig: `${relDerivRef.current}/4`, subdivision:1 };
       setMetA((p) => ({ ...p, bpm: relBpmBase, timeSig: `${relBaseRef.current}/4`,  subdivision:1 }));
@@ -1482,7 +1478,7 @@ export default function DualMetronome() {
     metA.bpm, metA.baseBpm, metA.timeSig, metA.subdivision, metA.strongSound, metA.weakSound, metA.volume, metA.muted,
     metB.bpm, metB.baseBpm, metB.timeSig, metB.subdivision, metB.strongSound, metB.weakSound, metB.volume, metB.muted]);
   useEffect(() => {
-    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settingsSnapshot)); } catch { /* private mode or quota — skip persisting */ }
+    saveSettings(settingsSnapshot); // best-effort — private mode or quota just skips
   }, [settingsSnapshot]);
 
   // ── render ─────────────────────────────────────────────────────────────────
