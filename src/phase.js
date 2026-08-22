@@ -40,6 +40,58 @@ export function perceptualBand(deriv, base) {
   return "textura";
 }
 
+// Euclidean rhythm E(k,n): distributes k onsets as evenly as possible across
+// n slots (Bjorklund's algorithm). Most traditional world rhythms — the
+// Cuban tresillo E(3,8), the cinquillo E(5,8), the bossa nova clave E(5,16) —
+// are a single (k,n) pair. Returns a boolean array of length n, rotated so
+// slot 0 is always an onset. Reference: Toussaint, "The Euclidean Algorithm
+// Generates Traditional Musical Rhythms" (2005).
+export function euclideanRhythm(k, n) {
+  if (n <= 0) return [];
+  if (k <= 0) return new Array(n).fill(false);
+  if (k >= n) return new Array(n).fill(true);
+
+  const counts = [];
+  const remainders = [k];
+  let divisor = n - k;
+  let level = 0;
+  while (true) {
+    counts[level] = Math.floor(divisor / remainders[level]);
+    remainders[level + 1] = divisor % remainders[level];
+    divisor = remainders[level];
+    level += 1;
+    if (remainders[level] <= 1) break;
+  }
+  counts[level] = divisor;
+
+  const pattern = [];
+  const build = (lvl) => {
+    if (lvl === -1) pattern.push(false);
+    else if (lvl === -2) pattern.push(true);
+    else {
+      for (let i = 0; i < counts[lvl]; i++) build(lvl - 1);
+      if (remainders[lvl] !== 0) build(lvl - 2);
+    }
+  };
+  build(level);
+  const first = pattern.indexOf(true);
+  return pattern.slice(first).concat(pattern.slice(0, first));
+}
+
+// Accent indices for an additive (aksak) meter — groups like [3,3,2] for an
+// 8-pulse cycle grouped 3+3+2 (Balkan/songo), instead of a flat total where
+// only pulse 0 is strong. In additive metrics the accent IS the metre: an
+// unaccented 8 is indistinguishable from a plain 4/4 (F1-ritmo-metrica.md).
+// Returns the Set of pulse indices where a new group starts.
+export function accentSet(groups) {
+  const accents = new Set();
+  let i = 0;
+  for (const g of groups) {
+    if (g > 0) { accents.add(i); i += g; }
+  }
+  return accents;
+}
+
 // DUAL SINC: both metronomes span the same cycle, so B's tempo follows from
 // how many pulses each side fits into it. `mult` is the ½ / ×1 / ×2 switch.
 export function derivedBpm(bpmBase, base, deriv, mult = 1) {

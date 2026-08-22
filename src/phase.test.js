@@ -2,7 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   gcd, lcm, polyCycleTarget, libreCycleTargets,
   cycleIndex, cycleRemaining, isSyncPulse, derivedBpm, reduceRatio, perceptualBand,
+  euclideanRhythm, accentSet,
 } from "./phase.js";
+
+const asDots = (pattern) => pattern.map((b) => (b ? "x" : ".")).join("");
 
 describe("gcd / lcm", () => {
   it("computes gcd", () => {
@@ -129,6 +132,65 @@ describe("perceptualBand", () => {
   it("judges by the reduced relation, not the raw inputs", () => {
     // 8:4 reduces to 2:1 (product 2) even though raw product is 32
     expect(perceptualBand(8, 4)).toBe("integrable");
+  });
+});
+
+// Bjorklund's algorithm — verified against the traditional world rhythms
+// tabulated in Toussaint, "The Euclidean Algorithm Generates Traditional
+// Musical Rhythms" (2005).
+describe("euclideanRhythm", () => {
+  it("matches the Cuban tresillo E(3,8)", () => {
+    expect(asDots(euclideanRhythm(3, 8))).toBe("x..x..x.");
+  });
+  it("matches the cinquillo E(5,8)", () => {
+    expect(asDots(euclideanRhythm(5, 8))).toBe("x.xx.xx.");
+  });
+  it("matches the simple hemiola-like E(2,5)", () => {
+    expect(asDots(euclideanRhythm(2, 5))).toBe("x.x..");
+  });
+  it("matches the bossa nova clave E(5,16)", () => {
+    expect(asDots(euclideanRhythm(5, 16))).toBe("x..x..x..x..x...");
+  });
+  it("matches the aksak E(4,9)", () => {
+    expect(asDots(euclideanRhythm(4, 9))).toBe("x.x.x.x..");
+  });
+  it("always starts on an onset (rotated to slot 0)", () => {
+    for (let n = 2; n <= 20; n++) for (let k = 1; k < n; k++) {
+      expect(euclideanRhythm(k, n)[0]).toBe(true);
+    }
+  });
+  it("always places exactly k onsets in n slots", () => {
+    for (let n = 2; n <= 20; n++) for (let k = 1; k < n; k++) {
+      const hits = euclideanRhythm(k, n).filter(Boolean).length;
+      expect(hits).toBe(k);
+    }
+  });
+  it("handles degenerate input without crashing", () => {
+    expect(euclideanRhythm(0, 8).every((b) => b === false)).toBe(true);
+    expect(euclideanRhythm(8, 8).every((b) => b === true)).toBe(true);
+    expect(euclideanRhythm(3, 0)).toEqual([]);
+    expect(euclideanRhythm(-1, 8).every((b) => b === false)).toBe(true);
+  });
+});
+
+describe("accentSet", () => {
+  it("accents every group start in a 3+3+2 songo/Balkan 8", () => {
+    expect(accentSet([3, 3, 2])).toEqual(new Set([0, 3, 6]));
+  });
+  it("matches the Turkish aksak 9 = 2+2+2+3", () => {
+    expect(accentSet([2, 2, 2, 3])).toEqual(new Set([0, 2, 4, 6]));
+  });
+  it("collapses to the classic single downbeat for a flat total", () => {
+    expect(accentSet([4])).toEqual(new Set([0]));
+  });
+  it("handles a 7 grouped 2+2+3", () => {
+    expect(accentSet([2, 2, 3])).toEqual(new Set([0, 2, 4]));
+  });
+  it("returns an empty set for no groups, without crashing", () => {
+    expect(accentSet([])).toEqual(new Set());
+  });
+  it("skips degenerate zero/negative group sizes instead of stalling", () => {
+    expect(accentSet([3, 0, 2])).toEqual(new Set([0, 3]));
   });
 });
 

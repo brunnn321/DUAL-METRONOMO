@@ -116,6 +116,30 @@ function cycleArcPath(cx, cy, r, frac, ccw) {
   return `M ${x0} ${y0} A ${r} ${r} 0 ${largeArc} ${sweep} ${x1} ${y1}`;
 }
 
+// mcm(A,B) tick ring — makes visible the shared grid every polyrhythm A:B
+// resolves into (C1: "toda polirritmia A:B se resuelve con una grilla común
+// de mcm(A,B) unidades"). A tick lights up in A's color every mcm/totalA
+// slots, in B's color every mcm/totalB slots, and gold where both land.
+// Capped past mcm=60 to avoid a ring so dense it reads as a solid line.
+function mcmGrid(lcmAB, totalA, totalB, r, cx, cy, CA, CB) {
+  if (!lcmAB || lcmAB > 60) return null;
+  const stepA = lcmAB / totalA, stepB = lcmAB / totalB;
+  return (
+    <g>
+      {Array.from({ length: lcmAB }, (_, i) => {
+        const onA = i % stepA === 0, onB = i % stepB === 0;
+        if (!onA && !onB) return null;
+        const color = onA && onB ? "#ffd75e" : onA ? CA : CB;
+        const len = onA && onB ? 8 : 5;
+        const a = (i / lcmAB) * 2 * Math.PI - Math.PI / 2;
+        const x0 = cx + (r - len) * Math.cos(a), y0 = cy + (r - len) * Math.sin(a);
+        const x1 = cx + (r + len) * Math.cos(a), y1 = cy + (r + len) * Math.sin(a);
+        return <line key={i} x1={x0} y1={y0} x2={x1} y2={y1} stroke={color} strokeWidth={onA && onB ? 2.5 : 1.5} opacity={0.85} />;
+      })}
+    </g>
+  );
+}
+
 function CircularVisualizer({
   metA, metB, runningA, runningB, centerLabel, showSubtitle, showMcm = true,
   // overrides let Dual Libre drive the visual off its subdivision/subTick
@@ -259,12 +283,12 @@ function CircularVisualizer({
             <>
               <circle cx={cx} cy={cy} r={rCycle} fill="none" stroke="#BA751733" strokeWidth={2} />
               {cycleFrac > 0 && (
-                <path d={cycleArcPath(cx, cy, rCycle, cycleFrac, true)} fill="none"
-                  stroke="#EF9F27" strokeWidth={remainingPulses <= 2 ? 4 : 2} strokeLinecap="round"
-                  style={{ filter: remainingPulses <= 2 ? "drop-shadow(0 0 6px #EF9F27)" : "none" }} />
+                <path d={cycleArcPath(cx, cy, rCycle, cycleFrac, false)} fill="none"
+                  stroke={syncSource === "A" ? CA : CB} strokeWidth={remainingPulses <= 2 ? 4 : 2} strokeLinecap="round"
+                  style={{ filter: remainingPulses <= 2 ? `drop-shadow(0 0 6px ${syncSource === "A" ? CA : CB})` : "none" }} />
               )}
               {(() => {
-                const [px, py] = circlePoint(cx, cy, rCycle, cycleFrac, true);
+                const [px, py] = circlePoint(cx, cy, rCycle, cycleFrac, false);
                 return (
                   <circle cx={px} cy={py} r={6.5} fill={syncSource === "A" ? CA : CB}
                     stroke="#15171c" strokeWidth={2} style={{ cursor:"pointer" }}
@@ -275,6 +299,7 @@ function CircularVisualizer({
           )}
           <circle cx={cx} cy={cy} r={rA} fill="none" stroke={`${CA}77`} strokeWidth={3} />
           <circle cx={cx} cy={cy} r={rB} fill="none" stroke={`${CB}77`} strokeWidth={3} />
+          {mcmGrid(lcmAB, totalA, totalB, rA + 10, cx, cy, CA, CB)}
           {syncFlash && (
             <>
               <circle cx={cx} cy={cy} r={rA} fill="none" stroke="#EF9F27" strokeWidth={5} style={{ filter:"drop-shadow(0 0 14px #EF9F27)" }} />
@@ -311,7 +336,7 @@ function CircularVisualizer({
             style={{ transition:"fill 0.2s", filter: syncFlash ? "drop-shadow(0 0 10px #fff)" : "none" }}>{label}</text>
           {showMcm && (
             <text x={cx} y={cy+13} textAnchor="middle" fill="#999" fontSize={11} fontFamily="monospace" fontWeight="600">
-              MCM = {lcmAB}
+              MCM {lcmAB} · A cada {lcmAB / totalA} · B cada {lcmAB / totalB}
             </text>
           )}
         </svg>
