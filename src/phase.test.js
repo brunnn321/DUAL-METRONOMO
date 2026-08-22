@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   gcd, lcm, polyCycleTarget, libreCycleTargets,
-  cycleIndex, cycleRemaining, isSyncPulse, derivedBpm,
+  cycleIndex, cycleRemaining, isSyncPulse, derivedBpm, reduceRatio, perceptualBand,
 } from "./phase.js";
 
 describe("gcd / lcm", () => {
@@ -92,6 +92,43 @@ describe("cycleRemaining", () => {
       expect(r).toBeGreaterThanOrEqual(1);
       expect(r).toBeLessThanOrEqual(12);
     }
+  });
+});
+
+describe("reduceRatio", () => {
+  it("flags a true coprime polyrhythm as-is", () => {
+    expect(reduceRatio(5, 4)).toEqual({ num: 5, den: 4, isCoprime: true });
+  });
+  it("collapses a nested subdivision like 8:4 to 2:1", () => {
+    expect(reduceRatio(8, 4)).toEqual({ num: 2, den: 1, isCoprime: false });
+  });
+  it("collapses 6:4 to the disguised 3:2", () => {
+    expect(reduceRatio(6, 4)).toEqual({ num: 3, den: 2, isCoprime: false });
+  });
+  it("treats equal values as the trivial 1:1", () => {
+    expect(reduceRatio(4, 4)).toEqual({ num: 1, den: 1, isCoprime: false });
+  });
+  it("never divides by zero on degenerate input", () => {
+    expect(Number.isFinite(reduceRatio(0, 0).num)).toBe(true);
+  });
+});
+
+describe("perceptualBand", () => {
+  it("calls 3:2 and 4:3 integrable — the fusing polyrhythms", () => {
+    expect(perceptualBand(3, 2)).toBe("integrable");
+    expect(perceptualBand(4, 3)).toBe("integrable");
+  });
+  it("calls 5:4 and 7:4 separable", () => {
+    expect(perceptualBand(5, 4)).toBe("separable");
+    expect(perceptualBand(7, 4)).toBe("separable");
+  });
+  it("calls 7:5 separable and 11:8 textura — the ear stops integrating", () => {
+    expect(perceptualBand(7, 5)).toBe("separable");
+    expect(perceptualBand(11, 8)).toBe("textura");
+  });
+  it("judges by the reduced relation, not the raw inputs", () => {
+    // 8:4 reduces to 2:1 (product 2) even though raw product is 32
+    expect(perceptualBand(8, 4)).toBe("integrable");
   });
 });
 

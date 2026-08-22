@@ -19,6 +19,27 @@ export function libreCycleTargets(bpmA, bpmB) {
   return { targetA: a / g, targetB: b / g, seconds: 60 / g };
 }
 
+// Reduces a DUAL SINC relation (deriv:base) to lowest terms and flags whether
+// it's coprime. A non-coprime pair (e.g. 8:4 -> 2:1) is a nested subdivision,
+// not a true polyrhythm: the two layers share a divisor and never conflict.
+export function reduceRatio(deriv, base) {
+  const g = gcd(Math.max(1, deriv), Math.max(1, base)) || 1;
+  const num = deriv / g, den = base / g;
+  return { num, den, isCoprime: g === 1 };
+}
+
+// Perceptual difficulty band of a polyrhythm, by the product of its reduced
+// terms (C1: small ratios like 3:2 or 4:3 fuse into one felt figure; large
+// ones like 7:5 or 11:8 split into two things the ear can't integrate).
+// Pedagogical rule of thumb, not a law — thresholds are empirical, not exact.
+export function perceptualBand(deriv, base) {
+  const { num, den } = reduceRatio(deriv, base);
+  const product = num * den;
+  if (product <= 12) return "integrable";
+  if (product <= 40) return "separable";
+  return "textura";
+}
+
 // DUAL SINC: both metronomes span the same cycle, so B's tempo follows from
 // how many pulses each side fits into it. `mult` is the ½ / ×1 / ×2 switch.
 export function derivedBpm(bpmBase, base, deriv, mult = 1) {

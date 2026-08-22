@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Play, Square, Volume2, VolumeX, ChevronRight, Lightbulb } from "lucide-react";
 // phase/cycle math lives in its own module so it can be unit-tested — see phase.test.js
-import { lcm, polyCycleTarget, libreCycleTargets, cycleIndex, cycleRemaining, isSyncPulse, derivedBpm } from "./phase.js";
+import { lcm, polyCycleTarget, libreCycleTargets, cycleIndex, cycleRemaining, isSyncPulse, derivedBpm, reduceRatio, perceptualBand } from "./phase.js";
 import { loadSettings, saveSettings } from "./settings.js";
 
 // ─── constants ────────────────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ function synthClick(ctx, time, soundKey, volume, pan = 0) {
 function ModeSelector({ mode, setMode }) {
   return (
     <div style={{ display:"flex", background:"#1a1c22", borderRadius:8, padding:3, maxWidth:520, margin:"0 auto", gap:2 }}>
-      {[["metrica","DUAL SINC","#a78bfa"],["libre","DUAL LIBRE","#ffd04a"],["polimetria","DUAL POLY","#4aff9a"]].map(([k, lbl, color]) => {
+      {[["metrica","DUAL SINC","#a78bfa"],["libre","DUAL TEMPO","#ffd04a"],["polimetria","DUAL POLY","#4aff9a"]].map(([k, lbl, color]) => {
         const on = mode === k;
         return (
           <button key={k} onClick={() => setMode(k)} style={{
@@ -330,9 +330,12 @@ function CircularVisualizer({
 
 // ─── polimetría panel ─────────────────────────────────────────────────────────
 function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap }) {
-  const ratio  = `${derivado}:${base}`;
-  const bpmB   = derivedBpm(bpmBase, base, derivado);
-  const fmtBpm = (v) => Number.isInteger(v) ? v : v.toFixed(2);
+  const ratio    = `${derivado}:${base}`;
+  const bpmB     = derivedBpm(bpmBase, base, derivado);
+  const fmtBpm   = (v) => Number.isInteger(v) ? v : v.toFixed(2);
+  const reduced  = reduceRatio(derivado, base);
+  const band     = perceptualBand(derivado, base);
+  const bandLbl  = { integrable:"se integra como una figura", separable:"se oyen dos capas separadas", textura:"el oído deja de seguirlo, se oye como textura" }[band];
   const [open, setOpen] = useState(true);
 
   return (
@@ -423,12 +426,22 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap 
         <div>
           <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>RELACIÓN</div>
           <div style={{ color:"#eee", fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, marginTop:3 }}>{ratio}</div>
+          {!reduced.isCoprime && (
+            <div style={{ color:"#e0a030", fontSize:10, fontFamily:"monospace", marginTop:4 }}>
+              = {reduced.num}:{reduced.den} — subdivisión, no polirritmia
+            </div>
+          )}
         </div>
         <div>
           <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>BPM B</div>
           <div style={{ color:"#4ad9ff", fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, marginTop:3 }}>{fmtBpm(bpmB)}</div>
         </div>
       </div>
+      {reduced.isCoprime && (
+        <div style={{ color:"#666", fontSize:10, fontFamily:"monospace", textAlign:"center" }}>
+          {reduced.num}:{reduced.den} — {bandLbl}
+        </div>
+      )}
       </div>
     </div>
   );
