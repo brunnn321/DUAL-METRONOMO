@@ -92,6 +92,18 @@ export function accentSet(groups) {
   return accents;
 }
 
+// Inverse of accentSet: turns a set of group-start pulse indices back into
+// group sizes (e.g. {0,3,6} over 8 -> [3,3,2]), so the UI can let someone
+// tap pulses on/off and store the result as groups. An empty or 0-only set
+// is a flat meter — one group spanning the whole cycle.
+export function groupsFromIndices(indices, total) {
+  const sorted = [...indices].filter((i) => i > 0).sort((a, b) => a - b);
+  const bounds = [0, ...sorted, total];
+  const groups = [];
+  for (let i = 0; i < bounds.length - 1; i++) groups.push(bounds[i + 1] - bounds[i]);
+  return groups;
+}
+
 // DUAL SINC: both metronomes span the same cycle, so B's tempo follows from
 // how many pulses each side fits into it. `mult` is the ½ / ×1 / ×2 switch.
 export function derivedBpm(bpmBase, base, deriv, mult = 1) {

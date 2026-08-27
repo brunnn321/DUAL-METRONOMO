@@ -1,11 +1,16 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Play, Square, Volume2, VolumeX, ChevronRight, Lightbulb } from "lucide-react";
 // phase/cycle math lives in its own module so it can be unit-tested — see phase.test.js
-import { lcm, polyCycleTarget, libreCycleTargets, cycleIndex, cycleRemaining, isSyncPulse, derivedBpm, reduceRatio, perceptualBand } from "./phase.js";
+import { lcm, polyCycleTarget, libreCycleTargets, cycleIndex, cycleRemaining, isSyncPulse, derivedBpm, reduceRatio, perceptualBand, accentSet, groupsFromIndices } from "./phase.js";
 import { loadSettings, saveSettings } from "./settings.js";
 
 // ─── constants ────────────────────────────────────────────────────────────────
 const beatsPerMeasure = (sig) => parseInt(sig.split("/")[0]);
+// Saved accentGroups only apply while they still sum to the current beat
+// total — a timeSig change (base/derivado, tiempos) self-heals back to flat
+// instead of leaving a stale pattern that no longer fits the cycle.
+const effectiveGroups = (groups, total) =>
+  Array.isArray(groups) && groups.reduce((a, b) => a + b, 0) === total ? groups : [total];
 const fmtMMSS = (s) => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 
 const SOUNDS = [
@@ -962,6 +967,31 @@ function CircleFullscreenToggle({ on, onToggle }) {
   );
 }
 
+// ─── additive-meter accent editor ──────────────────────────────────────────────
+// One dot per pulse in the cycle. Pulse 0 is always the downbeat (can't be
+// toggled off); tapping any other dot marks/unmarks it as a group start,
+// e.g. tapping pulses 3 and 6 of an 8 gives the 3+3+2 songo grouping.
+function AccentDots({ total, groups, onChange, accent }) {
+  const indices = accentSet(effectiveGroups(groups, total));
+  const toggle = (i) => {
+    if (i === 0) return;
+    const next = new Set(indices);
+    if (next.has(i)) next.delete(i); else next.add(i);
+    onChange(groupsFromIndices(next, total));
+  };
+  return (
+    <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+      {Array.from({ length: total }, (_, i) => (
+        <button key={i} onClick={() => toggle(i)} disabled={i === 0} style={{
+          width:15, height:15, borderRadius:"50%", padding:0, cursor: i === 0 ? "default" : "pointer",
+          background: indices.has(i) ? accent : "#252830",
+          border:`1px solid ${indices.has(i) ? accent : accent + "33"}`,
+        }} />
+      ))}
+    </div>
+  );
+}
+
 // ─── sync volume + sound editor (DUAL SINC) ───────────────────────────────────
 function SyncControls({ metA, metB, onChangeA, onChangeB }) {
   const [open, setOpen] = useState(false);
@@ -1007,6 +1037,20 @@ function SyncControls({ metA, metB, onChangeA, onChangeB }) {
               onChange={(v) => onChange({ strongSound: v })} accent={accent} />
             <SoundSelect label="DÉBIL" value={met.weakSound}
               onChange={(v) => onChange({ weakSound: v })} accent={accent} />
+          </div>
+        ))}
+      </div>
+
+      {/* additive-meter accents row */}
+      <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
+        {[
+          { label:"A", accent:"#ff6b4a", met:metA, onChange:onChangeA },
+          { label:"B", accent:"#4ad9ff", met:metB, onChange:onChangeB },
+        ].map(({ label, accent, met, onChange }) => (
+          <div key={label} style={{ flex:1, minWidth:200 }}>
+            <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:6 }}>ACENTOS</div>
+            <AccentDots total={beatsPerMeasure(met.timeSig)} groups={met.accentGroups}
+              onChange={(g) => onChange({ accentGroups: g })} accent={accent} />
           </div>
         ))}
       </div>
@@ -1097,8 +1141,8 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
-const DEFAULT_A = { bpm:120, baseBpm:120, timeSig:"4/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, subTick:-1, strongSound:"click", weakSound:"beep",  subdivision:1 };
-const DEFAULT_B = { bpm:90,  baseBpm:90,  timeSig:"3/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, subTick:-1, strongSound:"click", weakSound:"wood",  subdivision:1 };
+const DEFAULT_A = { bpm:120, baseBpm:120, timeSig:"4/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, subTick:-1, strongSound:"click", weakSound:"beep",  subdivision:1, accentGroups:null };
+const DEFAULT_B = { bpm:90,  baseBpm:90,  timeSig:"3/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, subTick:-1, strongSound:"click", weakSound:"wood",  subdivision:1, accentGroups:null };
 
 // remember the last configuration between sessions — only stable settings
 // (bpm, sounds, mode params), never live playback state (beat/subTick/running)
@@ -1179,18 +1223,19 @@ export default function DualMetronome() {
     const sched = (runRef, otherRef, metRef, nextRef, tickRef, setMeasures, setMet, fixedPan) => {
       if (!runRef.current) return;
       const sid = sessionRef.current; // snapshot — callbacks discard themselves if session changed
-      const { bpm, timeSig, volume, muted, strongSound, weakSound, subdivision } = metRef.current;
+      const { bpm, timeSig, volume, muted, strongSound, weakSound, subdivision, accentGroups } = metRef.current;
       // center if the other metronome is muted or not running
       const otherSilent = !otherRef.current || otherRef.current.muted;
       const pan = otherSilent ? 0 : fixedPan;
-      const total  = beatsPerMeasure(timeSig);
+      const total     = beatsPerMeasure(timeSig);
+      const accentIdx = accentSet(effectiveGroups(accentGroups, total));
       const subInt = (60 / bpm) / subdivision;
       while (nextRef.current < ahead) {
         const tick    = tickRef.current;
         const subIdx  = tick % subdivision;
         const beatIdx = Math.floor(tick / subdivision) % total;
         const isMain  = subIdx === 0;
-        const isAcc   = isMain && beatIdx === 0;
+        const isAcc   = isMain && accentIdx.has(beatIdx);
         const t       = nextRef.current;
         if (!muted) {
           if (isAcc)       synthClick(ctx, t, strongSound, volume, pan);
@@ -1509,12 +1554,12 @@ export default function DualMetronome() {
   // every beat tick, only when the user actually changes a setting
   const settingsSnapshot = useMemo(() => ({
     mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB,
-    metA: { bpm:metA.bpm, baseBpm:metA.baseBpm, timeSig:metA.timeSig, subdivision:metA.subdivision, strongSound:metA.strongSound, weakSound:metA.weakSound, volume:metA.volume, muted:metA.muted },
-    metB: { bpm:metB.bpm, baseBpm:metB.baseBpm, timeSig:metB.timeSig, subdivision:metB.subdivision, strongSound:metB.strongSound, weakSound:metB.weakSound, volume:metB.volume, muted:metB.muted },
+    metA: { bpm:metA.bpm, baseBpm:metA.baseBpm, timeSig:metA.timeSig, subdivision:metA.subdivision, strongSound:metA.strongSound, weakSound:metA.weakSound, volume:metA.volume, muted:metA.muted, accentGroups:metA.accentGroups },
+    metB: { bpm:metB.bpm, baseBpm:metB.baseBpm, timeSig:metB.timeSig, subdivision:metB.subdivision, strongSound:metB.strongSound, weakSound:metB.weakSound, volume:metB.volume, muted:metB.muted, accentGroups:metB.accentGroups },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB,
-    metA.bpm, metA.baseBpm, metA.timeSig, metA.subdivision, metA.strongSound, metA.weakSound, metA.volume, metA.muted,
-    metB.bpm, metB.baseBpm, metB.timeSig, metB.subdivision, metB.strongSound, metB.weakSound, metB.volume, metB.muted]);
+    metA.bpm, metA.baseBpm, metA.timeSig, metA.subdivision, metA.strongSound, metA.weakSound, metA.volume, metA.muted, metA.accentGroups,
+    metB.bpm, metB.baseBpm, metB.timeSig, metB.subdivision, metB.strongSound, metB.weakSound, metB.volume, metB.muted, metB.accentGroups]);
   useEffect(() => {
     saveSettings(settingsSnapshot); // best-effort — private mode or quota just skips
   }, [settingsSnapshot]);

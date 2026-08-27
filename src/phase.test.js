@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   gcd, lcm, polyCycleTarget, libreCycleTargets,
   cycleIndex, cycleRemaining, isSyncPulse, derivedBpm, reduceRatio, perceptualBand,
-  euclideanRhythm, accentSet,
+  euclideanRhythm, accentSet, groupsFromIndices,
 } from "./phase.js";
 
 const asDots = (pattern) => pattern.map((b) => (b ? "x" : ".")).join("");
@@ -191,6 +191,28 @@ describe("accentSet", () => {
   });
   it("skips degenerate zero/negative group sizes instead of stalling", () => {
     expect(accentSet([3, 0, 2])).toEqual(new Set([0, 3]));
+  });
+});
+
+describe("groupsFromIndices", () => {
+  it("is the inverse of accentSet for a 3+3+2 songo 8", () => {
+    expect(groupsFromIndices(new Set([0, 3, 6]), 8)).toEqual([3, 3, 2]);
+  });
+  it("is the inverse of accentSet for the aksak 9 = 2+2+2+3", () => {
+    expect(groupsFromIndices(new Set([0, 2, 4, 6]), 9)).toEqual([2, 2, 2, 3]);
+  });
+  it("sorts unordered indices before deriving group sizes", () => {
+    expect(groupsFromIndices(new Set([6, 0, 3]), 8)).toEqual([3, 3, 2]);
+  });
+  it("collapses to a single flat group when only 0 is accented", () => {
+    expect(groupsFromIndices(new Set([0]), 5)).toEqual([5]);
+  });
+  it("falls back to a flat group for an empty index set", () => {
+    expect(groupsFromIndices(new Set(), 5)).toEqual([5]);
+  });
+  it("round-trips through accentSet", () => {
+    const groups = [2, 2, 3];
+    expect(groupsFromIndices(accentSet(groups), 7)).toEqual(groups);
   });
 });
 
