@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { computeEnvelope, estimateBpmFromEnvelope, lastStrongOnsetIndex, refineOnsetIndex, nextBeatTime } from "./bpmDetector.js";
+import {
+  computeEnvelope, estimateBpmFromEnvelope, lastStrongOnsetIndex, refineOnsetIndex, nextBeatTime,
+  detectOnsets, estimateBpmFromOnsets, estimateTempo,
+} from "./bpmDetector.js";
 
 describe("computeEnvelope", () => {
   it("is zero where energy doesn't rise", () => {
@@ -45,6 +48,74 @@ describe("estimateBpmFromEnvelope", () => {
   it("returns low confidence for a flat/silent envelope instead of a garbage BPM", () => {
     const { confidence } = estimateBpmFromEnvelope(new Array(300).fill(0), frameRate);
     expect(confidence).toBeLessThan(0.1);
+  });
+});
+
+describe("detectOnsets / estimateBpmFromOnsets", () => {
+  const frameRate = 1000 / 15;
+
+  it.each([60, 83, 99, 100, 101, 140, 160, 180])("recovers %d BPM from onset intervals, not autocorrelation", (targetBpm) => {
+    // Tolerance of 2, not 1: these single-frame synthetic spikes (isolated
+    // between zeros) carry no shape for the parabolic refiner to lean on —
+    // a real click's attack spans several frames and refines tighter than
+    // this fixture can exercise. ±2 still matches what a single frame of
+    // rounding is worth at these lag magnitudes.
+    const env = syntheticEnvelope(targetBpm, frameRate);
+    const onsets = detectOnsets(env, frameRate);
+    const { bpm } = estimateBpmFromOnsets(onsets, frameRate);
+    expect(Math.abs(bpm - targetBpm)).toBeLessThanOrEqual(2);
+  });
+
+  it("is immune to autocorrelation's half-tempo failure mode", () => {
+    // 140 BPM is the exact case that used to come back as 70 before the
+    // octave-error fix — onset counting should never have been ambiguous.
+    const env = syntheticEnvelope(140, frameRate);
+    const onsets = detectOnsets(env, frameRate);
+    const { bpm } = estimateBpmFromOnsets(onsets, frameRate);
+    expect(Math.round(bpm)).toBe(140);
+  });
+
+  it("stays accurate via the median when one onset is missing (a dropped clap)", () => {
+    const env = syntheticEnvelope(100, frameRate, 500);
+    const onsets = detectOnsets(env, frameRate);
+    const withoutOne = [...onsets.slice(0, 4), ...onsets.slice(5)]; // drop the 5th onset
+    const { bpm, confidence } = estimateBpmFromOnsets(withoutOne, frameRate);
+    expect(Math.abs(bpm - 100)).toBeLessThanOrEqual(1);
+    expect(confidence).toBeGreaterThan(0.5); // one bad interval among many good ones
+  });
+
+  it("returns null with fewer than 3 onsets — not enough for a median", () => {
+    expect(estimateBpmFromOnsets([10, 50], frameRate)).toBeNull();
+    expect(estimateBpmFromOnsets([], frameRate)).toBeNull();
+  });
+
+  it("merges onsets closer than the fastest plausible tempo into one", () => {
+    // Two peaks 3 frames apart is far faster than 240 BPM allows — must be
+    // one hit's attack spread across frames, not two separate onsets.
+    const env = [0, 0, 1.0, 0.4, 0, 0, 0, 0];
+    const onsets = detectOnsets(env, frameRate);
+    expect(onsets.length).toBe(1);
+  });
+});
+
+describe("estimateTempo", () => {
+  const frameRate = 1000 / 15;
+
+  it("prefers onset-interval measurement over autocorrelation for a clean click train", () => {
+    const env = syntheticEnvelope(101, frameRate);
+    const { bpm, anchorIdx } = estimateTempo(env, frameRate);
+    expect(Math.abs(bpm - 101)).toBeLessThanOrEqual(1);
+    expect(typeof anchorIdx).toBe("number");
+  });
+
+  it("falls back to autocorrelation when there aren't enough discrete onsets", () => {
+    // A near-flat envelope (sustained tone, no attacks) has no onsets to
+    // count — estimateTempo must not throw and must still return a shape
+    // with a valid anchorIdx.
+    const env = new Array(300).fill(0).map((_, i) => (i % 40 === 0 ? 0.05 : 0));
+    const result = estimateTempo(env, frameRate);
+    expect(result).toHaveProperty("anchorIdx");
+    expect(Number.isFinite(result.anchorIdx)).toBe(true);
   });
 });
 

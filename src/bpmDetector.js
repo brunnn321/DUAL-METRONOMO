@@ -104,6 +104,65 @@ export function estimateBpmFromEnvelope(envelope, frameRate, { minBpm = MIN_BPM,
   };
 }
 
+// Detects individual onset peaks (claps/clicks) instead of searching for a
+// repeating period over the whole window. For a clean discrete source (an
+// external metronome, claps) this sidesteps autocorrelation's structural
+// weakness entirely: autocorrelation asks "what period best explains the
+// WHOLE window", which a half-tempo or unrelated period can answer better
+// than the true one on real (non-ideal) audio. Measuring actual onset-to-
+// onset time is a direct measurement, not a search — there's no "candidate
+// period" to get wrong.
+//
+// minGapFrames enforces the fastest plausible tempo (MAX_BPM) as a
+// refractory window, so one loud hit's decay tail can't be double-counted
+// as two onsets; when a peak lands inside another's refractory window the
+// stronger of the two wins.
+export function detectOnsets(envelope, frameRate, { threshold = 0.35 } = {}) {
+  const maxFlux = Math.max(...envelope) || 0;
+  if (maxFlux <= 0) return [];
+  const minGapFrames = Math.max(1, Math.round((frameRate * 60) / MAX_BPM));
+  const idx = [];
+  for (let i = 1; i < envelope.length - 1; i++) {
+    if (envelope[i] < maxFlux * threshold) continue;
+    if (!(envelope[i] >= envelope[i - 1] && envelope[i] >= envelope[i + 1])) continue;
+    const prev = idx[idx.length - 1];
+    if (prev !== undefined && i - prev < minGapFrames) {
+      if (envelope[i] > envelope[prev]) idx[idx.length - 1] = i;
+      continue;
+    }
+    idx.push(i);
+  }
+  return idx.map((i) => refineOnsetIndex(envelope, i));
+}
+
+function median(values) {
+  const s = values.slice().sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+// Tempo from the median inter-onset interval — median (not mean) so one
+// missed or extra onset in the window is an outlier that gets ignored
+// instead of skewing the estimate. Needs at least 3 onsets (2 intervals) to
+// say anything; returns null otherwise so the caller can fall back to
+// estimateBpmFromEnvelope for non-percussive input (singing, sustained
+// tones) where discrete onsets don't apply.
+export function estimateBpmFromOnsets(onsetIdx, frameRate) {
+  if (onsetIdx.length < 3) return null;
+  const iois = [];
+  for (let i = 1; i < onsetIdx.length; i++) iois.push(onsetIdx[i] - onsetIdx[i - 1]);
+  const medLag = median(iois);
+  if (medLag <= 0) return null;
+  const consistent = iois.filter((x) => Math.abs(x - medLag) <= medLag * 0.15).length;
+  const bpm = (frameRate * 60) / medLag;
+  return {
+    bpm,
+    periodSec: medLag / frameRate,
+    confidence: consistent / iois.length,
+    lastOnsetIdx: onsetIdx[onsetIdx.length - 1],
+  };
+}
+
 // Index of the last strong onset (local peak at or above half the envelope's
 // max) — the anchor closest to "now" so extrapolating forward to the next
 // beat accumulates as little drift as possible. Falls back to the global
@@ -130,6 +189,24 @@ export function refineOnsetIndex(envelope, idx) {
   if (Math.abs(denom) < 1e-12) return idx;
   const delta = 0.5 * (y0 - y2) / denom;
   return Math.abs(delta) <= 1 ? idx + delta : idx; // discard implausible fits
+}
+
+// Picks the best tempo estimate for a recorded envelope: onset-interval
+// measurement when there are enough clean discrete onsets (reliable, no
+// period-search ambiguity — the right fit for a metronome, claps, drum
+// hits), autocorrelation as the fallback for input that doesn't separate
+// into distinct onsets (singing, sustained tones, legato playing). Returns
+// a fractional onset index alongside the tempo so the caller has a single
+// path to compute the phase anchor regardless of which method won.
+export function estimateTempo(envelope, frameRate) {
+  const onsets = detectOnsets(envelope, frameRate);
+  const fromOnsets = estimateBpmFromOnsets(onsets, frameRate);
+  if (fromOnsets && fromOnsets.confidence >= 0.6) {
+    return { ...fromOnsets, bpm: Math.round(fromOnsets.bpm), anchorIdx: fromOnsets.lastOnsetIdx };
+  }
+  const fromAutocorr = estimateBpmFromEnvelope(envelope, frameRate);
+  const anchorIdx = refineOnsetIndex(envelope, lastStrongOnsetIndex(envelope));
+  return { ...fromAutocorr, anchorIdx };
 }
 
 // Next strictly-future instant (relative to targetTime, with a minimum lead
@@ -171,17 +248,15 @@ export function recordAndDetectBpm({ durationMs = 7000, onLevel } = {}) {
           stream.getTracks().forEach((t) => t.stop());
           ctx.close();
           const envelope = computeEnvelope(rmsFrames);
-          const { bpm, periodSec, confidence } = estimateBpmFromEnvelope(envelope, 1000 / FRAME_MS);
+          const { bpm, periodSec, confidence, anchorIdx } = estimateTempo(envelope, 1000 / FRAME_MS);
           if (!Number.isFinite(bpm) || confidence < MIN_CONFIDENCE) {
             reject(Object.assign(new Error("No se detectó un pulso claro"), { code: "NO_PERIODICITY" }));
             return;
           }
-          const anchorIdx = lastStrongOnsetIndex(envelope);
-          const refinedIdx = refineOnsetIndex(envelope, anchorIdx);
-          const lo = Math.floor(refinedIdx), frac = refinedIdx - lo;
+          const lo = Math.floor(anchorIdx), frac = anchorIdx - lo;
           const anchorAt = lo + 1 < wallTimes.length
             ? wallTimes[lo] + frac * (wallTimes[lo + 1] - wallTimes[lo])
-            : wallTimes[anchorIdx];
+            : wallTimes[Math.round(anchorIdx)];
           resolve({ bpm, periodSec, confidence, anchorAt });
         };
 
