@@ -34,6 +34,21 @@ function computeAlignedStart(ctx, phaseAnchor, manualOffsetMs = 0) {
   return Math.max(ctx.currentTime + 0.02, target - latency - manualOffsetMs / 1000);
 }
 
+// Silent diagnostic log for ESCUCHAR — no UI, never interrupts the user.
+// Keeps only the last 20 attempts (success or failure) so it never grows
+// unbounded. Read it later from the browser devtools/localStorage when a
+// specific report needs deeper debugging than "puse X, dijo Y".
+const MIC_LOG_KEY = "dualpulse-mic-log-v1";
+function logMicAttempt(entry) {
+  try {
+    const log = JSON.parse(localStorage.getItem(MIC_LOG_KEY) || "[]");
+    log.push({ t: new Date().toISOString(), ...entry });
+    localStorage.setItem(MIC_LOG_KEY, JSON.stringify(log.slice(-20)));
+  } catch {
+    // best-effort — never let logging break the actual feature
+  }
+}
+
 const LISTEN_ERROR_MESSAGES = {
   PERMISSION_DENIED: "No se pudo acceder al micrófono. Revisá los permisos del navegador para este sitio.",
   NO_DEVICE: "No se encontró un micrófono disponible en este dispositivo.",
@@ -1295,14 +1310,6 @@ export default function DualMetronome() {
   const [micOffsetMs, setMicOffsetMs] = useState(savedSettings.micOffsetMs ?? 0);
   const micOffsetRef = useRef(savedSettings.micOffsetMs ?? 0);
   const handleMicOffsetChange = (v) => { setMicOffsetMs(v); micOffsetRef.current = v; };
-  // Temporary diagnostic banner for ESCUCHAR results — while the detector is
-  // still being tuned against real mic input, showing raw onset count/
-  // confidence/method (instead of just the final BPM) is what lets a report
-  // like "gave me 160 instead of 99" actually be diagnosed.
-  const [micDiag, setMicDiag] = useState(null);
-  const reportListen = ({ bpm, confidence, method, onsetCount }) => {
-    setMicDiag(`${bpm} BPM · ${onsetCount} golpes · confianza ${Math.round(confidence * 100)}% · método: ${method}`);
-  };
 
   // real, beat-synced pulse counters (never a wall-clock timer) — feed the
   // POLY/LIBRE cycle countdowns and the sync ring in CircularVisualizer
@@ -1581,9 +1588,10 @@ export default function DualMetronome() {
       const { bpm, periodSec, anchorAt } = result;
       handleRelBpmBase(Math.min(600, Math.max(1, bpm)));
       startDual({ anchorAt, periodSec });
-      reportListen(result);
+      logMicAttempt({ mode: "sinc", ok: true, ...result });
     } catch (err) {
       setAudioError(LISTEN_ERROR_MESSAGES[err?.code] || "No se pudo detectar el tempo.");
+      logMicAttempt({ mode: "sinc", ok: false, code: err?.code });
     } finally {
       setMicListening(false);
     }
@@ -1652,9 +1660,10 @@ export default function DualMetronome() {
       const v = Math.min(600, Math.max(1, bpm));
       changeMetA({ bpm: v, baseBpm: v });
       startAAligned({ anchorAt, periodSec });
-      reportListen(result);
+      logMicAttempt({ mode: "libre-a", ok: true, ...result });
     } catch (err) {
       setAudioError(LISTEN_ERROR_MESSAGES[err?.code] || "No se pudo detectar el tempo.");
+      logMicAttempt({ mode: "libre-a", ok: false, code: err?.code });
     }
   };
   const handleListenB = async () => {
@@ -1664,9 +1673,10 @@ export default function DualMetronome() {
       const v = Math.min(600, Math.max(1, bpm));
       changeMetB({ bpm: v, baseBpm: v });
       startBAligned({ anchorAt, periodSec });
-      reportListen(result);
+      logMicAttempt({ mode: "libre-b", ok: true, ...result });
     } catch (err) {
       setAudioError(LISTEN_ERROR_MESSAGES[err?.code] || "No se pudo detectar el tempo.");
+      logMicAttempt({ mode: "libre-b", ok: false, code: err?.code });
     }
   };
 
@@ -1736,9 +1746,10 @@ export default function DualMetronome() {
       const { bpm, periodSec, anchorAt } = result;
       handlePolyBpm(Math.min(600, Math.max(1, bpm)));
       startDual({ anchorAt, periodSec });
-      reportListen(result);
+      logMicAttempt({ mode: "poly", ok: true, ...result });
     } catch (err) {
       setAudioError(LISTEN_ERROR_MESSAGES[err?.code] || "No se pudo detectar el tempo.");
+      logMicAttempt({ mode: "poly", ok: false, code: err?.code });
     } finally {
       setMicListening(false);
     }
@@ -1787,17 +1798,6 @@ export default function DualMetronome() {
         }}>
           <span>{audioError}</span>
           <button onClick={() => setAudioError(null)} style={{ background:"none", border:"none", color:"#ffb4b4", cursor:"pointer", fontSize:16, lineHeight:1, padding:"0 4px" }}>×</button>
-        </div>
-      )}
-      {micDiag && (
-        <div style={{
-          position:"fixed", top: audioError ? 40 : 0, left:0, right:0, zIndex:2000,
-          background:"#102a3d", borderBottom:"1px solid #4ad9ff", color:"#b4e4ff",
-          fontFamily:"monospace", fontSize:12, padding:"10px 16px",
-          display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
-        }}>
-          <span>{micDiag}</span>
-          <button onClick={() => setMicDiag(null)} style={{ background:"none", border:"none", color:"#b4e4ff", cursor:"pointer", fontSize:16, lineHeight:1, padding:"0 4px" }}>×</button>
         </div>
       )}
       {circleFsMode && (
