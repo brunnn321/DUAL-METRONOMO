@@ -82,10 +82,23 @@ export function estimateBpmFromEnvelope(envelope, frameRate, { minBpm = MIN_BPM,
     if (!inRange(best.bpm) && inRange(c.bpm) && c.score > best.score * 0.6) best = c;
   }
 
+  // Sub-frame refinement: the envelope only has one sample per FRAME_MS, so
+  // the true peak almost never sits exactly on an integer lag — at 100 BPM
+  // one frame of rounding error alone is worth ~2-3 BPM. Parabolic
+  // interpolation over the winning lag's immediate neighbors estimates
+  // where between the frames the real peak falls, well beyond what the
+  // sampling rate could otherwise resolve.
+  const y0 = autocorr(envelope, Math.max(lagMin, best.lag - 1));
+  const y1 = best.score;
+  const y2 = autocorr(envelope, best.lag + 1);
+  const denom = y0 - 2 * y1 + y2;
+  const refinedLag = Math.abs(denom) > 1e-12 ? best.lag + 0.5 * (y0 - y2) / denom : best.lag;
+  const refinedBpm = bpmOf(refinedLag);
+
   const maxScore = Math.max(...scores.map((s) => s.score)) || 1;
   return {
-    bpm: Math.round(best.bpm),
-    periodSec: 60 / best.bpm, // unrounded — feeds phase alignment
+    bpm: Math.round(refinedBpm),
+    periodSec: 60 / refinedBpm, // unrounded — feeds phase alignment
     confidence: best.score / maxScore,
     top: candidates.map((c) => ({ bpm: Math.round(c.bpm), score: c.score, rel: c.score / maxScore })),
   };
