@@ -118,6 +118,20 @@ export function lastStrongOnsetIndex(envelope) {
   return maxIdx;
 }
 
+// Sub-frame refinement of an onset index, same parabolic-interpolation idea
+// as estimateBpmFromEnvelope's lag refinement: one envelope sample per
+// FRAME_MS is coarse (15ms of pure quantization error on the phase anchor),
+// so fit the true peak's fractional position between the neighboring frames
+// instead of trusting the integer index alone. Returns a fractional index.
+export function refineOnsetIndex(envelope, idx) {
+  if (idx <= 0 || idx >= envelope.length - 1) return idx;
+  const y0 = envelope[idx - 1], y1 = envelope[idx], y2 = envelope[idx + 1];
+  const denom = y0 - 2 * y1 + y2;
+  if (Math.abs(denom) < 1e-12) return idx;
+  const delta = 0.5 * (y0 - y2) / denom;
+  return Math.abs(delta) <= 1 ? idx + delta : idx; // discard implausible fits
+}
+
 // Next strictly-future instant (relative to targetTime, with a minimum lead
 // so it can actually be scheduled) at which a beat would land, extrapolating
 // forward from the anchor onset by whole periods. All three times share one
@@ -163,7 +177,12 @@ export function recordAndDetectBpm({ durationMs = 7000, onLevel } = {}) {
             return;
           }
           const anchorIdx = lastStrongOnsetIndex(envelope);
-          resolve({ bpm, periodSec, confidence, anchorAt: wallTimes[anchorIdx] });
+          const refinedIdx = refineOnsetIndex(envelope, anchorIdx);
+          const lo = Math.floor(refinedIdx), frac = refinedIdx - lo;
+          const anchorAt = lo + 1 < wallTimes.length
+            ? wallTimes[lo] + frac * (wallTimes[lo + 1] - wallTimes[lo])
+            : wallTimes[anchorIdx];
+          resolve({ bpm, periodSec, confidence, anchorAt });
         };
 
         const poll = () => {

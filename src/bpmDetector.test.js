@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeEnvelope, estimateBpmFromEnvelope, lastStrongOnsetIndex, nextBeatTime } from "./bpmDetector.js";
+import { computeEnvelope, estimateBpmFromEnvelope, lastStrongOnsetIndex, refineOnsetIndex, nextBeatTime } from "./bpmDetector.js";
 
 describe("computeEnvelope", () => {
   it("is zero where energy doesn't rise", () => {
@@ -56,6 +56,23 @@ describe("lastStrongOnsetIndex", () => {
   it("falls back to the global peak when nothing else qualifies", () => {
     const env = [0, 0, 0, 0.9, 0, 0];
     expect(lastStrongOnsetIndex(env)).toBe(3);
+  });
+});
+
+describe("refineOnsetIndex", () => {
+  it("leaves a perfectly symmetric peak on its integer index", () => {
+    const env = [0, 0.5, 1.0, 0.5, 0];
+    expect(refineOnsetIndex(env, 2)).toBeCloseTo(2, 5);
+  });
+  it("shifts toward the taller neighbor for an asymmetric peak", () => {
+    const env = [0, 0.4, 1.0, 0.7, 0];
+    const refined = refineOnsetIndex(env, 2);
+    expect(refined).toBeGreaterThan(2); // taller shoulder is on the right (0.7 > 0.4)
+    expect(refined).toBeLessThan(3);
+  });
+  it("leaves an edge index untouched — no neighbor to interpolate with", () => {
+    const env = [1.0, 0.5, 0.1];
+    expect(refineOnsetIndex(env, 0)).toBe(0);
   });
 });
 

@@ -17,7 +17,7 @@ const effectiveGroups = (groups, total) =>
 // mic-capture AudioContext gets closed right after — its clock is unusable
 // afterward. To schedule the first click on the app's own (separate)
 // AudioContext, correlate the two clocks via performance.now() and convert.
-function computeAlignedStart(ctx, phaseAnchor) {
+function computeAlignedStart(ctx, phaseAnchor, manualOffsetMs = 0) {
   if (!phaseAnchor) return ctx.currentTime + 0.1;
   const offset = ctx.currentTime - performance.now() / 1000;
   const anchorInCtxTime = phaseAnchor.anchorAt / 1000 + offset;
@@ -26,9 +26,12 @@ function computeAlignedStart(ctx, phaseAnchor) {
   // seconds later (OS/hardware audio buffering — worse over Bluetooth). Fire
   // it that much earlier so what's actually heard lands on the beat instead
   // of consistently late. Falls back to baseLatency, then 0, on browsers
-  // that don't report outputLatency.
+  // that don't report outputLatency. outputLatency alone is unreliable
+  // (esp. Bluetooth, esp. non-Chromium browsers) — manualOffsetMs is the
+  // user's own calibrated correction on top of it, the only thing that
+  // actually works across real devices.
   const latency = (typeof ctx.outputLatency === "number" ? ctx.outputLatency : ctx.baseLatency) || 0;
-  return Math.max(ctx.currentTime + 0.02, target - latency);
+  return Math.max(ctx.currentTime + 0.02, target - latency - manualOffsetMs / 1000);
 }
 
 const LISTEN_ERROR_MESSAGES = {
@@ -107,6 +110,38 @@ function ModeSelector({ mode, setMode }) {
           }}>{lbl}</button>
         );
       })}
+    </div>
+  );
+}
+
+// ─── mic latency calibration (shared by the 3 modes, used only by ESCUCHAR) ──
+// ctx.outputLatency doesn't reliably cover real devices (esp. Bluetooth), so
+// this is a one-time-per-device manual correction the user dials in by ear:
+// positive fires the aligned click earlier, compensating more delay.
+function LatencyOffset({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ maxWidth:520, margin:"0 auto 14px", background:"#1a1c22", borderRadius:8 }}>
+      <button onClick={() => setOpen((o) => !o)} style={{
+        width:"100%", background:"none", border:"none", cursor:"pointer",
+        display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 12px",
+      }}>
+        <span style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1.5 }}>
+          LATENCIA {value !== 0 && <span style={{ color:"#888" }}>({value > 0 ? "+" : ""}{value}ms)</span>}
+        </span>
+        <ChevronRight size={11} color="#555" style={{ transform: open ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
+      </button>
+      {open && (
+        <div style={{ display:"flex", alignItems:"center", gap:10, padding:"0 12px 10px" }}>
+          <input type="range" min={-900} max={900} step={5} value={value}
+            onChange={(e) => onChange(parseInt(e.target.value))}
+            style={{ flex:1, accentColor:"#888" }} />
+          <span style={{ color:"#888", fontSize:11, fontFamily:"monospace", minWidth:56, textAlign:"right" }}>
+            {value > 0 ? "+" : ""}{value}ms
+          </span>
+          <button onClick={() => onChange(0)} style={{ background:"#252830", border:"1px solid #3a3d47", borderRadius:5, color:"#666", fontFamily:"monospace", fontSize:10, padding:"4px 8px", cursor:"pointer" }}>0</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1251,6 +1286,15 @@ export default function DualMetronome() {
   // the transport can't start mid-capture and bleed its own click into the
   // mic that's still listening.
   const [micListening, setMicListening] = useState(false);
+  // Manual latency compensation for ESCUCHAR's phase-aligned auto-start.
+  // ctx.outputLatency is unreliable across browsers and doesn't know about
+  // Bluetooth output latency at all — a user-calibrated offset is the only
+  // approach that actually works on a real device. Positive = fire the
+  // first click earlier (more compensation); ref mirrors state so the
+  // scheduler (outside React state) always reads the latest value.
+  const [micOffsetMs, setMicOffsetMs] = useState(savedSettings.micOffsetMs ?? 0);
+  const micOffsetRef = useRef(savedSettings.micOffsetMs ?? 0);
+  const handleMicOffsetChange = (v) => { setMicOffsetMs(v); micOffsetRef.current = v; };
 
   // real, beat-synced pulse counters (never a wall-clock timer) — feed the
   // POLY/LIBRE cycle countdowns and the sync ring in CircularVisualizer
@@ -1418,7 +1462,7 @@ export default function DualMetronome() {
     setPulseCountA(0); setPulseCountB(0); // fresh cycle
     const ctx = createCtx(); ctxRef.current = ctx;
     if (!ctx) return;
-    const t0  = computeAlignedStart(ctx, phaseAnchor);
+    const t0  = computeAlignedStart(ctx, phaseAnchor, micOffsetRef.current);
     nextARef.current = t0; nextBRef.current = t0;
     tickARef.current = 0;  tickBRef.current = 0;
     setMeasuresA(0); setMeasuresB(0);
@@ -1458,14 +1502,14 @@ export default function DualMetronome() {
   const startAAligned = (phaseAnchor) => {
     const ctx = ensureCtx();
     if (!ctx) return;
-    nextARef.current = computeAlignedStart(ctx, phaseAnchor); tickARef.current = 0; setMeasuresA(0);
+    nextARef.current = computeAlignedStart(ctx, phaseAnchor, micOffsetRef.current); tickARef.current = 0; setMeasuresA(0);
     runARef.current = true; setRunningA(true); setDualOn(false);
     if (!schedRef.current) { scheduleBeats(); schedRef.current = setInterval(scheduleBeats, 25); }
   };
   const startBAligned = (phaseAnchor) => {
     const ctx = ensureCtx();
     if (!ctx) return;
-    nextBRef.current = computeAlignedStart(ctx, phaseAnchor); tickBRef.current = 0; setMeasuresB(0);
+    nextBRef.current = computeAlignedStart(ctx, phaseAnchor, micOffsetRef.current); tickBRef.current = 0; setMeasuresB(0);
     runBRef.current = true; setRunningB(true); setDualOn(false);
     if (!schedRef.current) { scheduleBeats(); schedRef.current = setInterval(scheduleBeats, 25); }
   };
@@ -1692,11 +1736,11 @@ export default function DualMetronome() {
   // only stable config, never live playback state — so this can't fire on
   // every beat tick, only when the user actually changes a setting
   const settingsSnapshot = useMemo(() => ({
-    mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB,
+    mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB, micOffsetMs,
     metA: { bpm:metA.bpm, baseBpm:metA.baseBpm, timeSig:metA.timeSig, subdivision:metA.subdivision, strongSound:metA.strongSound, weakSound:metA.weakSound, volume:metA.volume, muted:metA.muted, accentGroups:metA.accentGroups },
     metB: { bpm:metB.bpm, baseBpm:metB.baseBpm, timeSig:metB.timeSig, subdivision:metB.subdivision, strongSound:metB.strongSound, weakSound:metB.weakSound, volume:metB.volume, muted:metB.muted, accentGroups:metB.accentGroups },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB,
+  }), [mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB, micOffsetMs,
     metA.bpm, metA.baseBpm, metA.timeSig, metA.subdivision, metA.strongSound, metA.weakSound, metA.volume, metA.muted, metA.accentGroups,
     metB.bpm, metB.baseBpm, metB.timeSig, metB.subdivision, metB.strongSound, metB.weakSound, metB.volume, metB.muted, metB.accentGroups]);
   useEffect(() => {
@@ -1780,9 +1824,10 @@ export default function DualMetronome() {
       </div>
 
       {/* mode selector */}
-      <div style={{ marginBottom:20 }}>
+      <div style={{ marginBottom:6 }}>
         <ModeSelector mode={mode} setMode={handleModeChange} />
       </div>
+      <LatencyOffset value={micOffsetMs} onChange={handleMicOffsetChange} />
 
       {/* ── DUAL SINC (polirritmia) ── */}
       {isMetrica && (
