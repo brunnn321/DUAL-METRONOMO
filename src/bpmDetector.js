@@ -23,11 +23,21 @@ function autocorr(x, lag) {
   return sum / n;
 }
 
-// Autocorrelate the envelope over the lag range for MIN_BPM..MAX_BPM, take
-// the strongest local peak. Octave-error guard: if the best peak isn't in
-// the musically common 60-200 BPM band but a nearly-as-strong one is,
-// prefer that one instead (autocorrelation's classic failure mode is
-// locking onto a half/double-tempo peak).
+// Autocorrelate the envelope over the lag range for MIN_BPM..MAX_BPM.
+//
+// Raw autocorrelation's classic failure is locking onto a sub-harmonic: a
+// click train at the true period P also correlates at 2P and 3P (weaker,
+// fewer pairs), but on real (non-ideal, quantized) clicks 2P regularly
+// scores *higher* than P itself and wins outright — confirmed both by the
+// synthetic tests below and by real mic recordings (a clean external
+// metronome at 100 BPM was first mis-read as ~53, almost exactly half).
+//
+// Fix: whenever the winning peak has a candidate at roughly half its own
+// lag (i.e. double its BPM) with comparable support, that faster candidate
+// is the more likely true period — a real period P always also correlates
+// at 2P, so 2P alone is never enough evidence to rule out P. Checked
+// directly against autocorr(lag/2), not just against whatever else made
+// the top-N peak list, so it can't be missed by unlucky peak-picking.
 export function estimateBpmFromEnvelope(envelope, frameRate, { minBpm = MIN_BPM, maxBpm = MAX_BPM } = {}) {
   const lagMin = Math.max(1, Math.round((frameRate * 60) / maxBpm));
   const lagMax = Math.min(envelope.length - 1, Math.round((frameRate * 60) / minBpm));
@@ -41,22 +51,34 @@ export function estimateBpmFromEnvelope(envelope, frameRate, { minBpm = MIN_BPM,
   const ranked = (peaks.length ? peaks : scores).slice().sort((a, b) => b.score - a.score);
   const top = ranked.slice(0, 5);
   const bpmOf = (lag) => (frameRate * 60) / lag;
-  const candidates = top.map((p) => ({ bpm: bpmOf(p.lag), score: p.score }));
+  const candidates = top.map((p) => ({ bpm: bpmOf(p.lag), lag: p.lag, score: p.score }));
 
   let best = candidates[0];
-  // Half-tempo lock is autocorrelation's classic failure: a click train at
-  // period P also correlates (more weakly) at 2P, but 2P can still end up
-  // scoring highest on real/quantized signals. If a candidate at ~2x the
-  // current pick's BPM still has substantial support, trust the faster one.
-  for (const c of candidates) {
-    if (c === best) continue;
-    const ratio = c.bpm / best.bpm;
-    if (ratio > 1.8 && ratio < 2.2 && c.score >= best.score * 0.55) best = c;
+  // Prefer a double-speed (then quadruple-speed) candidate near best.lag/2
+  // whenever it still has real support. Lags are derived from the ORIGINAL
+  // peak's lag divided by 2^step, not by repeatedly halving an already-
+  // rounded value — chained rounding drifts off the true lag by enough
+  // frames to land on the wrong BPM entirely at these small magnitudes.
+  // Each candidate lag is refined to the strongest of its ±1 neighbors
+  // since dividing by a power of two rarely lands exactly on an integer.
+  const originLag = best.lag;
+  for (let step = 1; step <= 2; step++) {
+    const target = Math.round(originLag / 2 ** step);
+    if (target < lagMin) break;
+    let cand = { lag: target, score: autocorr(envelope, target) };
+    for (let l = Math.max(lagMin, target - 1); l <= target + 1; l++) {
+      const s = autocorr(envelope, l);
+      if (s > cand.score) cand = { lag: l, score: s };
+    }
+    if (cand.score >= best.score * 0.45) best = { bpm: bpmOf(cand.lag), lag: cand.lag, score: cand.score };
+    else break;
   }
   // Remaining ambiguity: prefer the musically common 60-200 BPM band.
+  // Rounds before comparing — bpmOf() lands a hair outside 60/200 from pure
+  // float error often enough to matter (e.g. exactly-integer periods).
+  const inRange = (b) => Math.round(b) >= 60 && Math.round(b) <= 200;
   for (const c of candidates) {
     if (c === best) continue;
-    const inRange = (b) => b >= 60 && b <= 200;
     if (!inRange(best.bpm) && inRange(c.bpm) && c.score > best.score * 0.6) best = c;
   }
 
