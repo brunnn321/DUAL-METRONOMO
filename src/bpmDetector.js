@@ -202,11 +202,11 @@ export function estimateTempo(envelope, frameRate) {
   const onsets = detectOnsets(envelope, frameRate);
   const fromOnsets = estimateBpmFromOnsets(onsets, frameRate);
   if (fromOnsets && fromOnsets.confidence >= 0.6) {
-    return { ...fromOnsets, bpm: Math.round(fromOnsets.bpm), anchorIdx: fromOnsets.lastOnsetIdx };
+    return { ...fromOnsets, bpm: Math.round(fromOnsets.bpm), anchorIdx: fromOnsets.lastOnsetIdx, method: "onsets", onsetCount: onsets.length };
   }
   const fromAutocorr = estimateBpmFromEnvelope(envelope, frameRate);
   const anchorIdx = refineOnsetIndex(envelope, lastStrongOnsetIndex(envelope));
-  return { ...fromAutocorr, anchorIdx };
+  return { ...fromAutocorr, anchorIdx, method: "autocorr", onsetCount: onsets.length };
 }
 
 // Next strictly-future instant (relative to targetTime, with a minimum lead
@@ -248,7 +248,7 @@ export function recordAndDetectBpm({ durationMs = 7000, onLevel } = {}) {
           stream.getTracks().forEach((t) => t.stop());
           ctx.close();
           const envelope = computeEnvelope(rmsFrames);
-          const { bpm, periodSec, confidence, anchorIdx } = estimateTempo(envelope, 1000 / FRAME_MS);
+          const { bpm, periodSec, confidence, anchorIdx, method, onsetCount } = estimateTempo(envelope, 1000 / FRAME_MS);
           if (!Number.isFinite(bpm) || confidence < MIN_CONFIDENCE) {
             reject(Object.assign(new Error("No se detectó un pulso claro"), { code: "NO_PERIODICITY" }));
             return;
@@ -257,7 +257,7 @@ export function recordAndDetectBpm({ durationMs = 7000, onLevel } = {}) {
           const anchorAt = lo + 1 < wallTimes.length
             ? wallTimes[lo] + frac * (wallTimes[lo + 1] - wallTimes[lo])
             : wallTimes[Math.round(anchorIdx)];
-          resolve({ bpm, periodSec, confidence, anchorAt });
+          resolve({ bpm, periodSec, confidence, anchorAt, method, onsetCount });
         };
 
         const poll = () => {

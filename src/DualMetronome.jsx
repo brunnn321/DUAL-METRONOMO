@@ -1295,6 +1295,14 @@ export default function DualMetronome() {
   const [micOffsetMs, setMicOffsetMs] = useState(savedSettings.micOffsetMs ?? 0);
   const micOffsetRef = useRef(savedSettings.micOffsetMs ?? 0);
   const handleMicOffsetChange = (v) => { setMicOffsetMs(v); micOffsetRef.current = v; };
+  // Temporary diagnostic banner for ESCUCHAR results — while the detector is
+  // still being tuned against real mic input, showing raw onset count/
+  // confidence/method (instead of just the final BPM) is what lets a report
+  // like "gave me 160 instead of 99" actually be diagnosed.
+  const [micDiag, setMicDiag] = useState(null);
+  const reportListen = ({ bpm, confidence, method, onsetCount }) => {
+    setMicDiag(`${bpm} BPM · ${onsetCount} golpes · confianza ${Math.round(confidence * 100)}% · método: ${method}`);
+  };
 
   // real, beat-synced pulse counters (never a wall-clock timer) — feed the
   // POLY/LIBRE cycle countdowns and the sync ring in CircularVisualizer
@@ -1569,9 +1577,11 @@ export default function DualMetronome() {
   const handleGlobalListen = useCallback(async () => {
     setMicListening(true);
     try {
-      const { bpm, periodSec, anchorAt } = await recordAndDetectBpm({});
+      const result = await recordAndDetectBpm({});
+      const { bpm, periodSec, anchorAt } = result;
       handleRelBpmBase(Math.min(600, Math.max(1, bpm)));
       startDual({ anchorAt, periodSec });
+      reportListen(result);
     } catch (err) {
       setAudioError(LISTEN_ERROR_MESSAGES[err?.code] || "No se pudo detectar el tempo.");
     } finally {
@@ -1637,20 +1647,24 @@ export default function DualMetronome() {
   // nada más y lo arranca alineado — el otro lado no se toca.
   const handleListenA = async () => {
     try {
-      const { bpm, periodSec, anchorAt } = await recordAndDetectBpm({});
+      const result = await recordAndDetectBpm({});
+      const { bpm, periodSec, anchorAt } = result;
       const v = Math.min(600, Math.max(1, bpm));
       changeMetA({ bpm: v, baseBpm: v });
       startAAligned({ anchorAt, periodSec });
+      reportListen(result);
     } catch (err) {
       setAudioError(LISTEN_ERROR_MESSAGES[err?.code] || "No se pudo detectar el tempo.");
     }
   };
   const handleListenB = async () => {
     try {
-      const { bpm, periodSec, anchorAt } = await recordAndDetectBpm({});
+      const result = await recordAndDetectBpm({});
+      const { bpm, periodSec, anchorAt } = result;
       const v = Math.min(600, Math.max(1, bpm));
       changeMetB({ bpm: v, baseBpm: v });
       startBAligned({ anchorAt, periodSec });
+      reportListen(result);
     } catch (err) {
       setAudioError(LISTEN_ERROR_MESSAGES[err?.code] || "No se pudo detectar el tempo.");
     }
@@ -1718,9 +1732,11 @@ export default function DualMetronome() {
   const handlePolyListen = useCallback(async () => {
     setMicListening(true);
     try {
-      const { bpm, periodSec, anchorAt } = await recordAndDetectBpm({});
+      const result = await recordAndDetectBpm({});
+      const { bpm, periodSec, anchorAt } = result;
       handlePolyBpm(Math.min(600, Math.max(1, bpm)));
       startDual({ anchorAt, periodSec });
+      reportListen(result);
     } catch (err) {
       setAudioError(LISTEN_ERROR_MESSAGES[err?.code] || "No se pudo detectar el tempo.");
     } finally {
@@ -1771,6 +1787,17 @@ export default function DualMetronome() {
         }}>
           <span>{audioError}</span>
           <button onClick={() => setAudioError(null)} style={{ background:"none", border:"none", color:"#ffb4b4", cursor:"pointer", fontSize:16, lineHeight:1, padding:"0 4px" }}>×</button>
+        </div>
+      )}
+      {micDiag && (
+        <div style={{
+          position:"fixed", top: audioError ? 40 : 0, left:0, right:0, zIndex:2000,
+          background:"#102a3d", borderBottom:"1px solid #4ad9ff", color:"#b4e4ff",
+          fontFamily:"monospace", fontSize:12, padding:"10px 16px",
+          display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+        }}>
+          <span>{micDiag}</span>
+          <button onClick={() => setMicDiag(null)} style={{ background:"none", border:"none", color:"#b4e4ff", cursor:"pointer", fontSize:16, lineHeight:1, padding:"0 4px" }}>×</button>
         </div>
       )}
       {circleFsMode && (
