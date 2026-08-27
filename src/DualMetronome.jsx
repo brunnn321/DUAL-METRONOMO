@@ -21,7 +21,14 @@ function computeAlignedStart(ctx, phaseAnchor) {
   if (!phaseAnchor) return ctx.currentTime + 0.1;
   const offset = ctx.currentTime - performance.now() / 1000;
   const anchorInCtxTime = phaseAnchor.anchorAt / 1000 + offset;
-  return nextBeatTime(anchorInCtxTime, phaseAnchor.periodSec, ctx.currentTime, 0.1);
+  const target = nextBeatTime(anchorInCtxTime, phaseAnchor.periodSec, ctx.currentTime, 0.1);
+  // A click scheduled at ctx time T is only physically audible ~outputLatency
+  // seconds later (OS/hardware audio buffering — worse over Bluetooth). Fire
+  // it that much earlier so what's actually heard lands on the beat instead
+  // of consistently late. Falls back to baseLatency, then 0, on browsers
+  // that don't report outputLatency.
+  const latency = (typeof ctx.outputLatency === "number" ? ctx.outputLatency : ctx.baseLatency) || 0;
+  return Math.max(ctx.currentTime + 0.02, target - latency);
 }
 
 const LISTEN_ERROR_MESSAGES = {
