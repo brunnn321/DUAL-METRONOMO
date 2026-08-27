@@ -248,7 +248,17 @@ export function recordAndDetectBpm({ durationMs = 7000, onLevel } = {}) {
           stream.getTracks().forEach((t) => t.stop());
           ctx.close();
           const envelope = computeEnvelope(rmsFrames);
-          const { bpm, periodSec, confidence, anchorIdx, method, onsetCount } = estimateTempo(envelope, 1000 / FRAME_MS);
+          // setTimeout(poll, FRAME_MS) never fires at exactly FRAME_MS — event
+          // loop/main-thread overhead pushes the real interval a bit longer,
+          // which silently squeezes more real time into fewer counted frames
+          // and reads the tempo as faster than it is (a consistent few-%
+          // overestimate, confirmed against real recordings). Measure the
+          // actual frame rate from the wall-clock timestamps instead of
+          // trusting the requested interval.
+          const measuredFrameRate = wallTimes.length > 1
+            ? (1000 * (wallTimes.length - 1)) / (wallTimes[wallTimes.length - 1] - wallTimes[0])
+            : 1000 / FRAME_MS;
+          const { bpm, periodSec, confidence, anchorIdx, method, onsetCount } = estimateTempo(envelope, measuredFrameRate);
           if (!Number.isFinite(bpm) || confidence < MIN_CONFIDENCE) {
             reject(Object.assign(new Error("No se detectó un pulso claro"), { code: "NO_PERIODICITY" }));
             return;
@@ -257,7 +267,7 @@ export function recordAndDetectBpm({ durationMs = 7000, onLevel } = {}) {
           const anchorAt = lo + 1 < wallTimes.length
             ? wallTimes[lo] + frac * (wallTimes[lo + 1] - wallTimes[lo])
             : wallTimes[Math.round(anchorIdx)];
-          resolve({ bpm, periodSec, confidence, anchorAt, method, onsetCount });
+          resolve({ bpm, periodSec, confidence, anchorAt, method, onsetCount, measuredFrameRate });
         };
 
         const poll = () => {
