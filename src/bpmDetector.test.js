@@ -75,13 +75,26 @@ describe("detectOnsets / estimateBpmFromOnsets", () => {
     expect(Math.round(bpm)).toBe(140);
   });
 
-  it("stays accurate via the median when one onset is missing (a dropped clap)", () => {
+  it("stays accurate when one onset is missing (a dropped clap)", () => {
     const env = syntheticEnvelope(100, frameRate, 500);
     const onsets = detectOnsets(env, frameRate);
     const withoutOne = [...onsets.slice(0, 4), ...onsets.slice(5)]; // drop the 5th onset
     const { bpm, confidence } = estimateBpmFromOnsets(withoutOne, frameRate);
     expect(Math.abs(bpm - 100)).toBeLessThanOrEqual(1);
     expect(confidence).toBeGreaterThan(0.5); // one bad interval among many good ones
+  });
+
+  it("recovers the true tempo even when MOST intervals are doubled by missed onsets", () => {
+    // Real regression: 6 intervals from a noisy 100 BPM recording, 4 of the
+    // 6 doubled by dropped claps — [38,39,80,80,80,81] frames. A plain
+    // median lands on ~80 (50 BPM, exactly half) because the doubled gaps
+    // are the majority. Period induction should still recover ~100 from the
+    // two surviving true-period gaps, since 80/81 are consistent doublings
+    // of ~39-40, not evidence of a genuinely slower tempo.
+    const onsetIdx = [0, 38, 77, 157, 237, 317, 398];
+    const { bpm, confidence } = estimateBpmFromOnsets(onsetIdx, frameRate);
+    expect(Math.abs(bpm - 100)).toBeLessThan(5);
+    expect(confidence).toBeGreaterThan(0.5);
   });
 
   it("returns null with fewer than 3 onsets — not enough for a median", () => {
@@ -167,10 +180,15 @@ describe("estimateTempo", () => {
   }
 
   it("doesn't double the tempo on a noisy recording that used to trigger exactly that (regression)", () => {
+    // Was 203 BPM at confidence 0.69 before the onset-vs-autocorrelation
+    // redesign; period induction (see inferPeriod) now recovers the true
+    // tempo almost exactly and earns that confidence honestly, since it
+    // really does explain all 8 onsets as a consistent period this time.
     const env = noisyEnvelope(96, { seed: 193 });
-    const { bpm, confidence } = estimateTempo(env, frameRate);
-    expect(Math.abs(bpm - 96)).toBeLessThan(10); // was 203 before the fix
-    expect(confidence).toBeLessThan(0.5); // correctly flagged as uncertain, not falsely confident
+    const { bpm, confidence, method } = estimateTempo(env, frameRate);
+    expect(Math.abs(bpm - 96)).toBeLessThanOrEqual(1);
+    expect(method).toBe("onsets");
+    expect(confidence).toBeGreaterThan(0.9);
   });
 });
 

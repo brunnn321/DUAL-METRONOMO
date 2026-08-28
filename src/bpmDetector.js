@@ -135,26 +135,45 @@ export function detectOnsets(envelope, frameRate, { threshold = 0.35 } = {}) {
   return idx.map((i) => refineOnsetIndex(envelope, i));
 }
 
-function median(values) {
-  const s = values.slice().sort((a, b) => a - b);
-  const mid = Math.floor(s.length / 2);
-  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+// Infers the base period from a set of inter-onset intervals — beat-
+// histogram style period induction, not a plain median. The plain median
+// breaks when MORE THAN HALF the intervals are doubled (a run of missed
+// onsets): e.g. IOIs [38,39,80,80,80,81] from a 100 BPM recording where
+// several claps got missed — the true single-beat gaps (38,39) are the
+// minority, so the median lands on ~80 and reads as half tempo. Instead,
+// try each of the smallest few distinct IOIs as a candidate base period,
+// check whether ALL intervals are explained as a near-integer multiple of
+// it (a real base period explains its own doublings/triplings too, missed
+// onsets and all), and refine by averaging every interval's OWN estimate of
+// the base period (ioi / nearest-integer-multiple). Picking from the
+// smallest IOIs biases toward the finest period actually observed, rather
+// than accepting some larger common multiple as if it were the beat.
+function inferPeriod(iois) {
+  const candidates = [...new Set(iois)].sort((a, b) => a - b).slice(0, 3);
+  let best = null;
+  for (const p0 of candidates) {
+    if (p0 <= 0) continue;
+    const ks = iois.map((ioi) => Math.max(1, Math.round(ioi / p0)));
+    const fitCount = iois.filter((ioi, i) => Math.abs(ioi - ks[i] * p0) / (ks[i] * p0) <= 0.12).length;
+    if (fitCount < iois.length * 0.6) continue; // must explain most of the data to count
+    const refined = iois.reduce((sum, ioi, i) => sum + ioi / ks[i], 0) / iois.length;
+    if (!best || fitCount > best.fitCount) best = { period: refined, fitCount };
+  }
+  return best;
 }
 
-// Tempo from the median inter-onset interval — median (not mean) so one
-// missed or extra onset in the window is an outlier that gets ignored
-// instead of skewing the estimate. Needs at least 3 onsets (2 intervals) to
-// say anything; returns null otherwise so the caller can fall back to
-// estimateBpmFromEnvelope for non-percussive input (singing, sustained
-// tones) where discrete onsets don't apply.
+// Tempo from the inter-onset intervals. Needs at least 3 onsets (2
+// intervals) to say anything; returns null otherwise so the caller can fall
+// back to estimateBpmFromEnvelope for non-percussive input (singing,
+// sustained tones) where discrete onsets don't apply.
 export function estimateBpmFromOnsets(onsetIdx, frameRate) {
   if (onsetIdx.length < 3) return null;
   const iois = [];
   for (let i = 1; i < onsetIdx.length; i++) iois.push(onsetIdx[i] - onsetIdx[i - 1]);
-  const medLag = median(iois);
-  if (medLag <= 0) return null;
-  const consistent = iois.filter((x) => Math.abs(x - medLag) <= medLag * 0.15).length;
-  const bpm = (frameRate * 60) / medLag;
+  const inferred = inferPeriod(iois);
+  if (!inferred || inferred.period <= 0) return null;
+  const { period: lag, fitCount } = inferred;
+  const bpm = (frameRate * 60) / lag;
   // A handful of intervals can look perfectly "consistent" by pure chance —
   // 2 out of 2 matching means nothing the way 9 out of 10 does. Scale the
   // reported confidence down for small samples (full weight only from 6
@@ -163,8 +182,8 @@ export function estimateBpmFromOnsets(onsetIdx, frameRate) {
   const sampleFactor = Math.min(1, (onsetIdx.length - 1) / 5);
   return {
     bpm,
-    periodSec: medLag / frameRate,
-    confidence: (consistent / iois.length) * sampleFactor,
+    periodSec: lag / frameRate,
+    confidence: (fitCount / iois.length) * sampleFactor,
     lastOnsetIdx: onsetIdx[onsetIdx.length - 1],
   };
 }
