@@ -117,7 +117,15 @@ export function estimateBpmFromEnvelope(envelope, frameRate, { minBpm = MIN_BPM,
 // refractory window, so one loud hit's decay tail can't be double-counted
 // as two onsets; when a peak lands inside another's refractory window the
 // stronger of the two wins.
-export function detectOnsets(envelope, frameRate, { threshold = 0.35 } = {}) {
+//
+// threshold default (0.5, not the more permissive 0.35 it started at):
+// swept 0.2-0.7 against the 1020-recording synthetic stress corpus (see
+// architecture memory) — 0.5 minimized both the total failure rate and the
+// count of wrong-but-confident results. Below ~0.4 too much background
+// noise gets counted as onsets; above ~0.55 real quieter hits start getting
+// missed. Only validated against synthetic noise, not confirmed on real
+// recordings yet.
+export function detectOnsets(envelope, frameRate, { threshold = 0.5 } = {}) {
   const maxFlux = Math.max(...envelope) || 0;
   if (maxFlux <= 0) return [];
   const minGapFrames = Math.max(1, Math.round((frameRate * 60) / MAX_BPM));
