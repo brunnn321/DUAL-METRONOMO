@@ -96,6 +96,15 @@ describe("detectOnsets / estimateBpmFromOnsets", () => {
     const onsets = detectOnsets(env, frameRate);
     expect(onsets.length).toBe(1);
   });
+
+  it("scales confidence down for a small onset count even when those few agree perfectly", () => {
+    // Only 3 onsets (2 intervals), both exactly equal — a coincidence at
+    // this sample size, not real proof of periodicity. Confidence should
+    // be well below what the same perfect agreement would earn with many
+    // onsets (see the 100-BPM case above, which reaches 1.0).
+    const { confidence } = estimateBpmFromOnsets([0, 40, 80], frameRate);
+    expect(confidence).toBeLessThan(0.5);
+  });
 });
 
 describe("estimateTempo", () => {
@@ -112,10 +121,56 @@ describe("estimateTempo", () => {
     // A near-flat envelope (sustained tone, no attacks) has no onsets to
     // count — estimateTempo must not throw and must still return a shape
     // with a valid anchorIdx.
-    const env = new Array(300).fill(0).map((_, i) => (i % 40 === 0 ? 0.05 : 0));
+    const env = new Array(300).fill(0); // flat flux: no rises, no onsets to find at all
     const result = estimateTempo(env, frameRate);
     expect(result).toHaveProperty("anchorIdx");
     expect(Number.isFinite(result.anchorIdx)).toBe(true);
+  });
+
+  it("caps confidence when there's no onset corroboration at all (autocorrelation alone)", () => {
+    // Sustained-tone envelope again: forced onto the autocorrelation-only
+    // path. Even if autocorrelation itself reports high confidence, this
+    // path has no onset count to back it up and must never look as
+    // trustworthy as an onset-corroborated result.
+    const env = new Array(300).fill(0); // flat flux: no rises, no onsets to find at all
+    const { confidence, method } = estimateTempo(env, frameRate);
+    expect(method).toBe("autocorr");
+    expect(confidence).toBeLessThanOrEqual(0.5);
+  });
+
+  // Seeded, deterministic reproduction of a real regression: a noisy 96 BPM
+  // recording (dropped/echoed onsets, timing jitter, background noise) used
+  // to come back as 203 BPM at confidence 0.69 — an artifact of the
+  // autocorrelation fallback that wasn't even among its own top candidates.
+  // The fix: trust the onset reading whenever onsets exist at all, and use
+  // autocorrelation only to discount confidence when it disagrees, never to
+  // override the number.
+  function noisyEnvelope(targetBpm, { durationSec = 7, jitterMs = 25, missProb = 0.25, echoProb = 0.25, noiseFloor = 0.12, ampVar = 0.3, seed = 1 } = {}) {
+    let s = seed;
+    const rand = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+    const period = (frameRate * 60) / targetBpm;
+    const frames = Math.round((durationSec * 1000) / 15);
+    const rms = new Array(frames).fill(0).map(() => noiseFloor * rand());
+    let t = 0;
+    while (t < frames) {
+      const jitter = (rand() - 0.5) * 2 * (jitterMs / 15);
+      const idx = Math.round(t + jitter);
+      if (idx >= 0 && idx < frames && rand() > missProb) {
+        const amp = 0.3 + ampVar * rand();
+        rms[idx] = Math.max(rms[idx], amp);
+        if (idx + 1 < frames) rms[idx + 1] = Math.max(rms[idx + 1], amp * 0.4);
+        if (rand() < echoProb && idx + 3 < frames) rms[idx + 3] = Math.max(rms[idx + 3], amp * (0.5 + 0.3 * rand()));
+      }
+      t += period;
+    }
+    return computeEnvelope(rms);
+  }
+
+  it("doesn't double the tempo on a noisy recording that used to trigger exactly that (regression)", () => {
+    const env = noisyEnvelope(96, { seed: 193 });
+    const { bpm, confidence } = estimateTempo(env, frameRate);
+    expect(Math.abs(bpm - 96)).toBeLessThan(10); // was 203 before the fix
+    expect(confidence).toBeLessThan(0.5); // correctly flagged as uncertain, not falsely confident
   });
 });
 
