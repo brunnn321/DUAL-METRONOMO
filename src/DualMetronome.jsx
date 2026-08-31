@@ -49,6 +49,16 @@ function logMicAttempt(entry) {
   }
 }
 
+// Shows the silent mic-attempt log in a text prompt, selectable/copyable on
+// mobile with no devtools needed — triggered by tapping the title 5x fast
+// (see titleTapRef below). This is the only way to get that log off a
+// phone in practice; asking someone to open a mobile browser console isn't
+// realistic.
+function showMicLog() {
+  const log = localStorage.getItem(MIC_LOG_KEY) || "[]";
+  window.prompt("Log de ESCUCHAR (seleccioná todo y copiá):", log);
+}
+
 const LISTEN_ERROR_MESSAGES = {
   PERMISSION_DENIED: "No se pudo acceder al micrófono. Revisá los permisos del navegador para este sitio.",
   NO_DEVICE: "No se encontró un micrófono disponible en este dispositivo.",
@@ -1311,6 +1321,16 @@ export default function DualMetronome() {
   const micOffsetRef = useRef(savedSettings.micOffsetMs ?? 0);
   const handleMicOffsetChange = (v) => { setMicOffsetMs(v); micOffsetRef.current = v; };
 
+  // 5 taps on the title within 1.5s reveals the mic log (see showMicLog).
+  const titleTapRef = useRef([]);
+  const handleTitleTap = () => {
+    const now = performance.now();
+    const taps = titleTapRef.current.filter((t) => now - t < 1500);
+    taps.push(now);
+    titleTapRef.current = taps;
+    if (taps.length >= 5) { titleTapRef.current = []; showMicLog(); }
+  };
+
   // real, beat-synced pulse counters (never a wall-clock timer) — feed the
   // POLY/LIBRE cycle countdowns and the sync ring in CircularVisualizer
   const [pulseCountA, setPulseCountA] = useState(0);
@@ -1845,7 +1865,7 @@ export default function DualMetronome() {
       <>
       {/* header */}
       <div style={{ textAlign:"center", marginBottom:18 }}>
-        <h1 style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, color:"#eee", margin:0, letterSpacing:4 }}>
+        <h1 onClick={handleTitleTap} style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, color:"#eee", margin:0, letterSpacing:4, userSelect:"none", cursor:"default" }}>
           DUAL <span style={{ color:"#ff6b4a" }}>PUL</span><span style={{ color:"#4ad9ff" }}>SE</span>
         </h1>
       </div>
