@@ -118,20 +118,46 @@ export function estimateBpmFromEnvelope(envelope, frameRate, { minBpm = MIN_BPM,
 // as two onsets; when a peak lands inside another's refractory window the
 // stronger of the two wins.
 //
-// threshold default (0.5, not the more permissive 0.35 it started at):
-// swept 0.2-0.7 against the 1020-recording synthetic stress corpus (see
-// architecture memory) — 0.5 minimized both the total failure rate and the
-// count of wrong-but-confident results. Below ~0.4 too much background
-// noise gets counted as onsets; above ~0.55 real quieter hits start getting
-// missed. Only validated against synthetic noise, not confirmed on real
-// recordings yet.
+// threshold (0.5) is relative to a ROBUST loudness reference, not always
+// the single loudest peak in the window. Real logged recordings showed
+// onset counts as low as 1 in a 7s take — one unusually loud, ISOLATED
+// transient (a bump, wind, one unusually hard hit) sets the plain-max
+// reference so high that every other real (normal-amplitude) hit falls
+// under threshold and gets missed, silently pushing the whole detector
+// onto the weaker autocorrelation fallback.
+//
+// Fix is deliberately narrow: walk down the sorted peaks and skip only a
+// peak that's isolated — more than 2.5x the very next one below it — since
+// that's specifically the "one freak spike" signature. A tried-and-discarded
+// broader version (median of the upper half of ALL local peaks) backfired
+// badly on genuinely noisy audio: background noise generates far more small
+// local peaks than there are real onsets, so "half of everything" is
+// dominated by noise and drags the reference down to near the noise floor
+// instead of near the real hits — the opposite failure, false onsets
+// everywhere. This version only ever discards a genuine outlier and
+// otherwise behaves exactly like the plain max it replaces.
+function robustPeakReference(peaksDesc) {
+  let i = 0;
+  while (i < peaksDesc.length - 1 && peaksDesc[i] > peaksDesc[i + 1] * 2.5) i++;
+  return peaksDesc[i];
+}
+
+// minGapFrames enforces the fastest plausible tempo (MAX_BPM) as a
+// refractory window, so one loud hit's decay tail can't be double-counted
+// as two onsets; when a peak lands inside another's refractory window the
+// stronger of the two wins.
 export function detectOnsets(envelope, frameRate, { threshold = 0.5 } = {}) {
-  const maxFlux = Math.max(...envelope) || 0;
-  if (maxFlux <= 0) return [];
+  const localPeaks = [];
+  for (let i = 1; i < envelope.length - 1; i++) {
+    if (envelope[i] > 0 && envelope[i] >= envelope[i - 1] && envelope[i] >= envelope[i + 1]) localPeaks.push(envelope[i]);
+  }
+  if (localPeaks.length === 0) return [];
+  const ref = robustPeakReference([...localPeaks].sort((a, b) => b - a)) || 0;
+  if (ref <= 0) return [];
   const minGapFrames = Math.max(1, Math.round((frameRate * 60) / MAX_BPM));
   const idx = [];
   for (let i = 1; i < envelope.length - 1; i++) {
-    if (envelope[i] < maxFlux * threshold) continue;
+    if (envelope[i] < ref * threshold) continue;
     if (!(envelope[i] >= envelope[i - 1] && envelope[i] >= envelope[i + 1])) continue;
     const prev = idx[idx.length - 1];
     if (prev !== undefined && i - prev < minGapFrames) {

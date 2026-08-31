@@ -110,6 +110,20 @@ describe("detectOnsets / estimateBpmFromOnsets", () => {
     expect(onsets.length).toBe(1);
   });
 
+  it("doesn't let one isolated outlier peak suppress detection of the rest (real production bug)", () => {
+    // Confirmed real regression: a logged production attempt at 150 BPM
+    // came back with onsetCount:1 — a single unusually loud transient (a
+    // bump, wind, one harder hit) set the plain-max threshold reference so
+    // high that every normal-amplitude click fell under it. 8 clicks at
+    // equal spacing, one made 4x louder than the rest — must still find
+    // (most of) the other 7.
+    const period = 20; // frames
+    const env = new Array(200).fill(0);
+    for (let t = 0, i = 0; t < 200; t += period, i++) env[Math.round(t)] = i === 3 ? 4.0 : 1.0;
+    const onsets = detectOnsets(env, frameRate);
+    expect(onsets.length).toBeGreaterThanOrEqual(6);
+  });
+
   it("scales confidence down for a small onset count even when those few agree perfectly", () => {
     // Only 3 onsets (2 intervals), both exactly equal — a coincidence at
     // this sample size, not real proof of periodicity. Confidence should
