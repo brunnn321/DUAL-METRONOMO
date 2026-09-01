@@ -19,28 +19,6 @@ export function libreCycleTargets(bpmA, bpmB) {
   return { targetA: a / g, targetB: b / g, seconds: 60 / g };
 }
 
-// Inverse of libreCycleTargets: given A's BPM fixed, finds the B BPM whose
-// resync interval (60/gcd(A,B)) comes closest to a desired number of
-// seconds. Not every value is exactly reachable — gcd(A,B) can only be a
-// divisor of A — so this is a nearest-fit search over the whole BPM range;
-// ties (several B give the same closest seconds) prefer whichever B stays
-// nearest to B's current value, so a small edit doesn't jump B far away.
-export function pickBpmForSeconds(bpmA, desiredSeconds, currentBpmB, min = 1, max = 600) {
-  const a = Math.max(1, Math.round(bpmA));
-  const cur = Math.max(1, Math.round(currentBpmB));
-  let best = min;
-  let bestErr = Infinity;
-  for (let b = min; b <= max; b++) {
-    const actual = 60 / gcd(a, b);
-    const err = Math.abs(actual - desiredSeconds);
-    if (err < bestErr - 1e-9 || (err < bestErr + 1e-9 && Math.abs(b - cur) < Math.abs(best - cur))) {
-      best = b;
-      bestErr = err;
-    }
-  }
-  return best;
-}
-
 // Reduces a DUAL SINC relation (deriv:base) to lowest terms and flags whether
 // it's coprime. A non-coprime pair (e.g. 8:4 -> 2:1) is a nested subdivision,
 // not a true polyrhythm: the two layers share a divisor and never conflict.
