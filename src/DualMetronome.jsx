@@ -1142,7 +1142,7 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const DEFAULT_A = { bpm:120, baseBpm:120, timeSig:"4/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, subTick:-1, strongSound:"click", weakSound:"beep",  subdivision:1, accentGroups:null };
-const DEFAULT_B = { bpm:90,  baseBpm:90,  timeSig:"3/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, subTick:-1, strongSound:"click", weakSound:"wood",  subdivision:1, accentGroups:null };
+const DEFAULT_B = { bpm:90,  baseBpm:90,  timeSig:"4/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, subTick:-1, strongSound:"click", weakSound:"wood",  subdivision:1, accentGroups:null };
 
 // remember the last configuration between sessions — only stable settings
 // (bpm, sounds, mode params), never live playback state (beat/subTick/running)
@@ -1156,19 +1156,19 @@ export default function DualMetronome() {
 
   // polimetría params + refs (refs updated synchronously so restartNow can read them)
   const [relBase,    setRelBase]    = useState(savedSettings.relBase ?? 4);
-  const [relDeriv,   setRelDeriv]   = useState(savedSettings.relDeriv ?? 5);
+  const [relDeriv,   setRelDeriv]   = useState(savedSettings.relDeriv ?? 4);
   const [relBpmBase, setRelBpmBase] = useState(savedSettings.relBpmBase ?? 90);
   const relBaseRef  = useRef(savedSettings.relBase ?? 4);
-  const relDerivRef = useRef(savedSettings.relDeriv ?? 5);
+  const relDerivRef = useRef(savedSettings.relDeriv ?? 4);
   const relMultRef = useRef(1);
 
   // polimetría (tercer modo) params
   const [polyBpm,    setPolyBpm]    = useState(savedSettings.polyBpm ?? 90);
   const [polyBeatsA, setPolyBeatsA] = useState(savedSettings.polyBeatsA ?? 4);
-  const [polyBeatsB, setPolyBeatsB] = useState(savedSettings.polyBeatsB ?? 3);
+  const [polyBeatsB, setPolyBeatsB] = useState(savedSettings.polyBeatsB ?? 4);
   const polyBpmRef    = useRef(savedSettings.polyBpm ?? 90);
   const polyBeatsARef = useRef(savedSettings.polyBeatsA ?? 4);
-  const polyBeatsBRef = useRef(savedSettings.polyBeatsB ?? 3);
+  const polyBeatsBRef = useRef(savedSettings.polyBeatsB ?? 4);
   const polyMultRef = useRef(1);
 
   // shared audio state
@@ -1179,8 +1179,8 @@ export default function DualMetronome() {
   // (relBase=4, relDeriv=5, relBpmBase=90) so the visualizer's ring counts
   // and MCM match the "5:4" label from the very first render — unless a
   // saved session overrides bpm/timeSig/sounds/subdivision/volume/muted
-  const [metA, setMetA] = useState(() => ({ ...DEFAULT_A, bpm:90,    baseBpm:90,    timeSig:"4/4", ...savedSettings.metA }));
-  const [metB, setMetB] = useState(() => ({ ...DEFAULT_B, bpm:112.5, baseBpm:112.5, timeSig:"5/4", ...savedSettings.metB }));
+  const [metA, setMetA] = useState(() => ({ ...DEFAULT_A, bpm:90, baseBpm:90, timeSig:"4/4", ...savedSettings.metA }));
+  const [metB, setMetB] = useState(() => ({ ...DEFAULT_B, bpm:90, baseBpm:90, timeSig:"4/4", ...savedSettings.metB }));
   const [measuresA, setMeasuresA] = useState(0);
   const [measuresB, setMeasuresB] = useState(0);
   const [flashOn, setFlashOn] = useState(false);
