@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   gcd, lcm, polyCycleTarget, libreCycleTargets,
   cycleIndex, cycleRemaining, isSyncPulse, derivedBpm, reduceRatio, perceptualBand,
-  euclideanRhythm, accentSet, groupsFromIndices,
+  euclideanRhythm, accentSet, groupsFromIndices, pickBpmForSeconds,
 } from "./phase.js";
 
 const asDots = (pattern) => pattern.map((b) => (b ? "x" : ".")).join("");
@@ -213,6 +213,24 @@ describe("groupsFromIndices", () => {
   it("round-trips through accentSet", () => {
     const groups = [2, 2, 3];
     expect(groupsFromIndices(accentSet(groups), 7)).toEqual(groups);
+  });
+});
+
+describe("pickBpmForSeconds", () => {
+  it("finds a B that reproduces an exactly-achievable seconds value", () => {
+    // gcd(90,45)=45 -> 60/45 = 1.333...s
+    const b = pickBpmForSeconds(90, 60 / 45, 90);
+    expect(libreCycleTargets(90, b).seconds).toBeCloseTo(60 / 45, 5);
+  });
+  it("prefers the B closest to the current one when several tie", () => {
+    // gcd(90, b)=90 for any multiple of 90 within range (90, 180, ...) -> all give 1s
+    const b = pickBpmForSeconds(90, 60 / 90, 175);
+    expect(b).toBe(180); // closer to 175 than 90 is
+  });
+  it("stays within the given BPM bounds", () => {
+    const b = pickBpmForSeconds(90, 0.001, 90, 1, 600);
+    expect(b).toBeGreaterThanOrEqual(1);
+    expect(b).toBeLessThanOrEqual(600);
   });
 });
 

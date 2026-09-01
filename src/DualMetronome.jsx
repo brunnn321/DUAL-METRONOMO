@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Play, Square, Volume2, VolumeX, ChevronRight, Lightbulb } from "lucide-react";
 // phase/cycle math lives in its own module so it can be unit-tested — see phase.test.js
-import { lcm, polyCycleTarget, libreCycleTargets, cycleIndex, cycleRemaining, isSyncPulse, derivedBpm, reduceRatio, perceptualBand, accentSet, groupsFromIndices } from "./phase.js";
+import { lcm, polyCycleTarget, libreCycleTargets, cycleIndex, cycleRemaining, isSyncPulse, derivedBpm, reduceRatio, perceptualBand, accentSet, groupsFromIndices, pickBpmForSeconds } from "./phase.js";
 import { loadSettings, saveSettings } from "./settings.js";
 
 // ─── constants ────────────────────────────────────────────────────────────────
@@ -814,19 +814,44 @@ function PracticeTimer({ onFinish, onStatus }) {
 // ─── phase-sync info (DUAL LIBRE) ─────────────────────────────────────────────
 // Two independent integer BPMs starting together realign exactly every
 // 60/gcd(bpmA,bpmB) seconds. Shows that estimate and an opt-in auto-stop.
-function PhaseSyncInfo({ bpmA, bpmB, pulseCountA, running }) {
+function PhaseSyncInfo({ bpmA, bpmB, pulseCountA, running, onChangeB }) {
   const { targetA, seconds } = libreCycleTargets(bpmA, bpmB);
   const fmt = (s) => s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s/60)}m ${Math.round(s%60)}s`;
   const same = Math.round(bpmA) === Math.round(bpmB);
   // live countdown, ticks down exactly once per real pulse of A — never a
   // wall-clock timer, so it always matches what's actually sounding
   const remaining = cycleRemaining(pulseCountA, targetA);
+  const [draft, setDraft] = useState(null); // text being typed, or null when not editing
+
+  const commit = (text) => {
+    const v = parseFloat(text.replace(",", "."));
+    if (Number.isFinite(v) && v > 0) {
+      const b = pickBpmForSeconds(bpmA, v, bpmB);
+      onChangeB({ bpm: b, baseBpm: b });
+    }
+    setDraft(null);
+  };
 
   return (
     <div style={{ maxWidth:880, margin:"0 auto 18px", background:"#1e2028", borderRadius:12, border:"1px solid #252830", padding:"12px 18px", display:"flex", alignItems:"center", gap:14 }}>
-      <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:20, fontWeight:700, color: same ? "#444" : "#ffd04a" }}>
-        {same ? "—" : running ? remaining : fmt(seconds)}
-      </div>
+      {running || same ? (
+        <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:20, fontWeight:700, color: same ? "#444" : "#ffd04a" }}>
+          {same ? "—" : remaining}
+        </div>
+      ) : (
+        <input
+          type="text" inputMode="decimal"
+          value={draft ?? fmt(seconds)}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={() => setDraft(seconds.toFixed(2))}
+          onBlur={(e) => commit(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+          style={{
+            background:"none", border:"none", outline:"none", padding:0, width:90,
+            fontFamily:"'JetBrains Mono',monospace", fontSize:20, fontWeight:700, color:"#ffd04a",
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1700,7 +1725,7 @@ export default function DualMetronome() {
               showCycleRing cycleTargetA={libreCycleTargetA} cycleTargetB={libreCycleTargetB}
               cyclePulseA={pulseCountA} cyclePulseB={pulseCountB} />
           </div>
-          <PhaseSyncInfo bpmA={metA.bpm} bpmB={metB.bpm} pulseCountA={pulseCountA} running={dualOn} />
+          <PhaseSyncInfo bpmA={metA.bpm} bpmB={metB.bpm} pulseCountA={pulseCountA} running={dualOn} onChangeB={changeMetB} />
           <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", maxWidth:880, margin:"0 auto" }}>
             <MetronomePanel color="A" state={metA} onChange={changeMetA} running={runningA} onToggle={toggleA} measures={measuresA} />
             <MetronomePanel color="B" state={metB} onChange={changeMetB} running={runningB} onToggle={toggleB} measures={measuresB} />
