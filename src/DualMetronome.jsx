@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Play, Square, Volume2, VolumeX, ChevronRight, Lightbulb } from "lucide-react";
 // phase/cycle math lives in its own module so it can be unit-tested — see phase.test.js
 import { lcm, polyCycleTarget, libreCycleTargets, cycleIndex, cycleRemaining, isSyncPulse, derivedBpm, reduceRatio, perceptualBand, accentSet, groupsFromIndices } from "./phase.js";
-import { recordAndDetectBpm, nextBeatTime } from "./bpmDetector.js";
 import { loadSettings, saveSettings } from "./settings.js";
 
 // ─── constants ────────────────────────────────────────────────────────────────
@@ -12,59 +11,6 @@ const beatsPerMeasure = (sig) => parseInt(sig.split("/")[0]);
 // instead of leaving a stale pattern that no longer fits the cycle.
 const effectiveGroups = (groups, total) =>
   Array.isArray(groups) && groups.reduce((a, b) => a + b, 0) === total ? groups : [total];
-
-// recordAndDetectBpm's anchor is measured on performance.now() because the
-// mic-capture AudioContext gets closed right after — its clock is unusable
-// afterward. To schedule the first click on the app's own (separate)
-// AudioContext, correlate the two clocks via performance.now() and convert.
-function computeAlignedStart(ctx, phaseAnchor, manualOffsetMs = 0) {
-  if (!phaseAnchor) return ctx.currentTime + 0.1;
-  const offset = ctx.currentTime - performance.now() / 1000;
-  const anchorInCtxTime = phaseAnchor.anchorAt / 1000 + offset;
-  const target = nextBeatTime(anchorInCtxTime, phaseAnchor.periodSec, ctx.currentTime, 0.1);
-  // A click scheduled at ctx time T is only physically audible ~outputLatency
-  // seconds later (OS/hardware audio buffering — worse over Bluetooth). Fire
-  // it that much earlier so what's actually heard lands on the beat instead
-  // of consistently late. Falls back to baseLatency, then 0, on browsers
-  // that don't report outputLatency. outputLatency alone is unreliable
-  // (esp. Bluetooth, esp. non-Chromium browsers) — manualOffsetMs is the
-  // user's own calibrated correction on top of it, the only thing that
-  // actually works across real devices.
-  const latency = (typeof ctx.outputLatency === "number" ? ctx.outputLatency : ctx.baseLatency) || 0;
-  return Math.max(ctx.currentTime + 0.02, target - latency - manualOffsetMs / 1000);
-}
-
-// Silent diagnostic log for ESCUCHAR — no UI, never interrupts the user.
-// Keeps only the last 20 attempts (success or failure) so it never grows
-// unbounded. Read it later from the browser devtools/localStorage when a
-// specific report needs deeper debugging than "puse X, dijo Y".
-const MIC_LOG_KEY = "dualpulse-mic-log-v1";
-function logMicAttempt(entry) {
-  try {
-    const log = JSON.parse(localStorage.getItem(MIC_LOG_KEY) || "[]");
-    log.push({ t: new Date().toISOString(), ...entry });
-    localStorage.setItem(MIC_LOG_KEY, JSON.stringify(log.slice(-20)));
-  } catch {
-    // best-effort — never let logging break the actual feature
-  }
-}
-
-// Shows the silent mic-attempt log in a text prompt, selectable/copyable on
-// mobile with no devtools needed — triggered by tapping the title 5x fast
-// (see titleTapRef below). This is the only way to get that log off a
-// phone in practice; asking someone to open a mobile browser console isn't
-// realistic.
-function showMicLog() {
-  const log = localStorage.getItem(MIC_LOG_KEY) || "[]";
-  window.prompt("Log de ESCUCHAR (seleccioná todo y copiá):", log);
-}
-
-const LISTEN_ERROR_MESSAGES = {
-  PERMISSION_DENIED: "No se pudo acceder al micrófono. Revisá los permisos del navegador para este sitio.",
-  NO_DEVICE: "No se encontró un micrófono disponible en este dispositivo.",
-  UNSUPPORTED: "La detección de tempo por micrófono no está disponible en este navegador o conexión (requiere HTTPS).",
-  NO_PERIODICITY: "No se detectó un pulso claro. Probá tocar más fuerte y de forma más regular, y volvé a intentar.",
-};
 const fmtMMSS = (s) => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 
 const SOUNDS = [
@@ -135,38 +81,6 @@ function ModeSelector({ mode, setMode }) {
           }}>{lbl}</button>
         );
       })}
-    </div>
-  );
-}
-
-// ─── mic latency calibration (shared by the 3 modes, used only by ESCUCHAR) ──
-// ctx.outputLatency doesn't reliably cover real devices (esp. Bluetooth), so
-// this is a one-time-per-device manual correction the user dials in by ear:
-// positive fires the aligned click earlier, compensating more delay.
-function LatencyOffset({ value, onChange }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div style={{ maxWidth:520, margin:"0 auto 14px", background:"#1a1c22", borderRadius:8 }}>
-      <button onClick={() => setOpen((o) => !o)} style={{
-        width:"100%", background:"none", border:"none", cursor:"pointer",
-        display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 12px",
-      }}>
-        <span style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1.5 }}>
-          LATENCIA {value !== 0 && <span style={{ color:"#888" }}>({value > 0 ? "+" : ""}{value}ms)</span>}
-        </span>
-        <ChevronRight size={11} color="#555" style={{ transform: open ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
-      </button>
-      {open && (
-        <div style={{ display:"flex", alignItems:"center", gap:10, padding:"0 12px 10px" }}>
-          <input type="range" min={-900} max={900} step={5} value={value}
-            onChange={(e) => onChange(parseInt(e.target.value))}
-            style={{ flex:1, accentColor:"#888" }} />
-          <span style={{ color:"#888", fontSize:11, fontFamily:"monospace", minWidth:56, textAlign:"right" }}>
-            {value > 0 ? "+" : ""}{value}ms
-          </span>
-          <button onClick={() => onChange(0)} style={{ background:"#252830", border:"1px solid #3a3d47", borderRadius:5, color:"#666", fontFamily:"monospace", fontSize:10, padding:"4px 8px", cursor:"pointer" }}>0</button>
-        </div>
-      )}
     </div>
   );
 }
@@ -445,7 +359,7 @@ function CircularVisualizer({
 }
 
 // ─── polimetría panel ─────────────────────────────────────────────────────────
-function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap, onListen, running }) {
+function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap }) {
   const ratio    = `${derivado}:${base}`;
   const bpmB     = derivedBpm(bpmBase, base, derivado);
   const fmtBpm   = (v) => Number.isInteger(v) ? v : v.toFixed(2);
@@ -453,8 +367,6 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap,
   const band     = perceptualBand(derivado, base);
   const bandLbl  = { integrable:"se integra como una figura", separable:"se oyen dos capas separadas", textura:"el oído deja de seguirlo, se oye como textura" }[band];
   const [open, setOpen] = useState(true);
-  const [listening, setListening] = useState(false);
-  const handleListen = async () => { setListening(true); await onListen(); setListening(false); };
 
   return (
     <div style={{ background:"#1e2028", borderRadius:12, maxWidth:680, margin:"0 auto", border:"1px solid #252830" }}>
@@ -480,14 +392,7 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap,
             <input type="range" min={1} max={600} value={bpmBase}
               onChange={(e) => onBpmBase(parseInt(e.target.value))}
               style={{ width:"100%", accentColor:"#ff6b4a" }} />
-            <div style={{ display:"flex", gap:6, marginTop:4 }}>
-              <button onClick={onTap} style={{ flex:1, background:"#ff6b4a14", border:"1px solid #ff6b4a44", borderRadius:7, color:"#ff6b4a", fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1 }}>TAP TEMPO</button>
-              <button onClick={handleListen} disabled={running || listening} title="Detectar BPM por micrófono" style={{
-                flex:1, background:"#ff6b4a14", border:"1px solid #ff6b4a44", borderRadius:7,
-                color: (running || listening) ? "#555" : "#ff6b4a", fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600,
-                padding:"8px", cursor: (running || listening) ? "default" : "pointer", letterSpacing:1, opacity: (running || listening) ? 0.6 : 1,
-              }}>{listening ? "ESCUCHANDO…" : "ESCUCHAR"}</button>
-            </div>
+            <button onClick={onTap} style={{ background:"#ff6b4a14", border:"1px solid #ff6b4a44", borderRadius:7, color:"#ff6b4a", fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1, marginTop:4 }}>TAP TEMPO</button>
             <div style={{ display:"flex", gap:5 }}>
               {[-10,-1,+1,+10].map((d) => (
                 <button key={d} onClick={() => onBpmBase(Math.min(600, Math.max(1, bpmBase + d)))} style={{
@@ -589,20 +494,13 @@ function SoundSelect({ label, value, onChange, accent }) {
 }
 
 // ─── metronome panel ──────────────────────────────────────────────────────────
-function MetronomePanel({ color, state, onChange, running, onToggle, measures, onListen }) {
+function MetronomePanel({ color, state, onChange, running, onToggle, measures }) {
   const { bpm, volume, muted, subTick, strongSound, weakSound, subdivision } = state;
   const [soundOpen, setSoundOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(true);
-  const [listening, setListening] = useState(false);
   const tapRef = useRef([]);
   const accent    = color === "A" ? "#ff6b4a" : "#4ad9ff";
   const dimAccent = color === "A" ? "#6a2a18" : "#174d5e";
-
-  const handleListen = async () => {
-    setListening(true);
-    await onListen();
-    setListening(false);
-  };
 
   const handleTap = () => {
     const now = performance.now();
@@ -625,14 +523,13 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures, o
       flex:1, minWidth:270, transition:"border-color 0.25s",
     }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end" }}>
-        <button onClick={onToggle} disabled={listening} title={running ? "Detener" : "Reproducir"} style={{
+        <button onClick={onToggle} title={running ? "Detener" : "Reproducir"} style={{
           background: running ? "#2a1010" : "#0d2616",
           border:`1px solid ${running ? "#ff4a4a" : "#4aff7a"}`,
-          borderRadius:8, width:38, height:32, cursor: listening ? "default" : "pointer",
+          borderRadius:8, width:38, height:32, cursor:"pointer",
           display:"flex", alignItems:"center", justifyContent:"center",
           color: running ? "#ff4a4a" : "#4aff7a",
           boxShadow: running ? "none" : "0 0 10px #4aff7a33",
-          opacity: listening ? 0.5 : 1,
           transition:"all 0.15s",
         }}>
           {running ? <Square size={13} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
@@ -657,14 +554,7 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures, o
           <input type="range" min={1} max={600} value={Math.round(bpm)}
             onChange={(e) => { const v = parseInt(e.target.value); onChange({ bpm: v, baseBpm: v }); }}
             style={{ width:"100%", accentColor:accent, cursor:"pointer" }} />
-          <div style={{ display:"flex", gap:6 }}>
-            <button onClick={handleTap} style={{ flex:1, background:`${accent}14`, border:`1px solid ${accent}44`, borderRadius:7, color:accent, fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1 }}>TAP TEMPO</button>
-            <button onClick={handleListen} disabled={running || listening} title="Detectar BPM por micrófono" style={{
-              flex:1, background:`${accent}14`, border:`1px solid ${accent}44`, borderRadius:7,
-              color: (running || listening) ? "#555" : accent, fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600,
-              padding:"8px", cursor: (running || listening) ? "default" : "pointer", letterSpacing:1, opacity: (running || listening) ? 0.6 : 1,
-            }}>{listening ? "ESCUCHANDO…" : "ESCUCHAR"}</button>
-          </div>
+          <button onClick={handleTap} style={{ background:`${accent}14`, border:`1px solid ${accent}44`, borderRadius:7, color:accent, fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1 }}>TAP TEMPO</button>
           <div style={{ display:"flex", gap:5 }}>
             {[-10,-1,+1,+10].map((d) => (
               <button key={d} onClick={() => { const v = Math.min(600, Math.max(1, Math.round(bpm)+d)); onChange({ bpm: v, baseBpm: v }); }} style={{ background:"#252830", border:`1px solid ${accent}33`, borderRadius:5, color:accent, fontFamily:"monospace", fontSize:12, padding:"5px 10px", cursor:"pointer" }}>{d > 0 ? `+${d}` : d}</button>
@@ -723,17 +613,16 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures, o
 }
 
 // ─── dual switch ──────────────────────────────────────────────────────────────
-function DualSwitch({ on, onToggle, disabled }) {
+function DualSwitch({ on, onToggle }) {
   return (
-    <button onClick={onToggle} disabled={disabled} title={disabled ? "Escuchando…" : (on ? "Detener" : "Iniciar")} style={{
+    <button onClick={onToggle} title={on ? "Detener" : "Iniciar"} style={{
       position:"fixed", bottom:24, left:"50%", transform:"translateX(-50%)", zIndex:1001,
       display:"flex", alignItems:"center", justifyContent:"center",
       width:64, height:64, borderRadius:"50%",
       background: on ? "#2a1010" : "#0d2616",
       border:`2px solid ${on ? "#ff4a4a" : "#4aff7a"}`,
-      cursor: disabled ? "default" : "pointer", userSelect:"none",
+      cursor:"pointer", userSelect:"none",
       boxShadow: on ? "0 0 20px #ff4a4a44" : "0 0 24px #4aff7a55",
-      opacity: disabled ? 0.5 : 1,
       transition:"all 0.2s",
     }}>
       {on
@@ -1171,12 +1060,10 @@ function SyncControls({ metA, metB, onChangeA, onChangeB }) {
 }
 
 // ─── polimetría panel ─────────────────────────────────────────────────────────
-function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap, onListen, pulseCount, running }) {
+function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap, pulseCount, running }) {
   const lcmAB = lcm(beatsA, beatsB);
   const remaining = cycleRemaining(pulseCount, lcmAB);
   const [open, setOpen] = useState(true);
-  const [listening, setListening] = useState(false);
-  const handleListen = async () => { setListening(true); await onListen(); setListening(false); };
   return (
     <div style={{ background:"#1e2028", borderRadius:12, maxWidth:680, margin:"0 auto", border:"1px solid #252830" }}>
       <button onClick={() => setOpen((o) => !o)} style={{
@@ -1199,14 +1086,7 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap
                 <button key={d} onClick={() => onBpm(Math.min(600, Math.max(1, bpm + d)))} style={{ background:"#252830", border:"1px solid #4aff9a33", borderRadius:5, color:"#4aff9a", fontFamily:"monospace", fontSize:11, padding:"4px 9px", cursor:"pointer" }}>{d > 0 ? `+${d}` : d}</button>
               ))}
             </div>
-            <div style={{ display:"flex", gap:6, marginTop:4 }}>
-              <button onClick={onTap} style={{ flex:1, background:"#4aff9a14", border:"1px solid #4aff9a44", borderRadius:7, color:"#4aff9a", fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1 }}>TAP TEMPO</button>
-              <button onClick={handleListen} disabled={running || listening} title="Detectar BPM por micrófono" style={{
-                flex:1, background:"#4aff9a14", border:"1px solid #4aff9a44", borderRadius:7,
-                color: (running || listening) ? "#555" : "#4aff9a", fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600,
-                padding:"8px", cursor: (running || listening) ? "default" : "pointer", letterSpacing:1, opacity: (running || listening) ? 0.6 : 1,
-              }}>{listening ? "ESCUCHANDO…" : "ESCUCHAR"}</button>
-            </div>
+            <button onClick={onTap} style={{ background:"#4aff9a14", border:"1px solid #4aff9a44", borderRadius:7, color:"#4aff9a", fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1, marginTop:4 }}>TAP TEMPO</button>
           </div>
         </div>
       </div>
@@ -1307,29 +1187,6 @@ export default function DualMetronome() {
   const [vizStyle, setVizStyle] = useState("necklace"); // "rings" | "necklace" — shared across all 3 modes
   const [circleFullscreen, setCircleFullscreen] = useState(false);
   const [audioError, setAudioError] = useState(null);
-  // Blocks the shared DualSwitch (SINC/POLY) while ESCUCHAR is recording, so
-  // the transport can't start mid-capture and bleed its own click into the
-  // mic that's still listening.
-  const [micListening, setMicListening] = useState(false);
-  // Manual latency compensation for ESCUCHAR's phase-aligned auto-start.
-  // ctx.outputLatency is unreliable across browsers and doesn't know about
-  // Bluetooth output latency at all — a user-calibrated offset is the only
-  // approach that actually works on a real device. Positive = fire the
-  // first click earlier (more compensation); ref mirrors state so the
-  // scheduler (outside React state) always reads the latest value.
-  const [micOffsetMs, setMicOffsetMs] = useState(savedSettings.micOffsetMs ?? 0);
-  const micOffsetRef = useRef(savedSettings.micOffsetMs ?? 0);
-  const handleMicOffsetChange = (v) => { setMicOffsetMs(v); micOffsetRef.current = v; };
-
-  // 5 taps on the title within 1.5s reveals the mic log (see showMicLog).
-  const titleTapRef = useRef([]);
-  const handleTitleTap = () => {
-    const now = performance.now();
-    const taps = titleTapRef.current.filter((t) => now - t < 1500);
-    taps.push(now);
-    titleTapRef.current = taps;
-    if (taps.length >= 5) { titleTapRef.current = []; showMicLog(); }
-  };
 
   // real, beat-synced pulse counters (never a wall-clock timer) — feed the
   // POLY/LIBRE cycle countdowns and the sync ring in CircularVisualizer
@@ -1486,18 +1343,14 @@ export default function DualMetronome() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metB.subTick]);
 
-  // phaseAnchor (optional): {anchorAt, periodSec} from recordAndDetectBpm —
-  // when present, the first beat lands on the estimated pulse instead of
-  // "right now", so ESCUCHAR can auto-start already in time with what was
-  // just recorded.
-  const startDual = useCallback((phaseAnchor) => {
+  const startDual = useCallback(() => {
     // defensive: never stack a second scheduler/context on top of a live one
     clearInterval(schedRef.current); schedRef.current = null;
     ctxRef.current?.close();
     setPulseCountA(0); setPulseCountB(0); // fresh cycle
     const ctx = createCtx(); ctxRef.current = ctx;
     if (!ctx) return;
-    const t0  = computeAlignedStart(ctx, phaseAnchor, micOffsetRef.current);
+    const t0  = ctx.currentTime + 0.1;
     nextARef.current = t0; nextBRef.current = t0;
     tickARef.current = 0;  tickBRef.current = 0;
     setMeasuresA(0); setMeasuresB(0);
@@ -1531,24 +1384,6 @@ export default function DualMetronome() {
       if (!schedRef.current) { scheduleBeats(); schedRef.current = setInterval(scheduleBeats, 25); }
     }
   };
-
-  // Used only by ESCUCHAR (DUAL LIBRE): starts one side already aligned to
-  // the phase just detected, instead of "right now" like toggleA/toggleB.
-  const startAAligned = (phaseAnchor) => {
-    const ctx = ensureCtx();
-    if (!ctx) return;
-    nextARef.current = computeAlignedStart(ctx, phaseAnchor, micOffsetRef.current); tickARef.current = 0; setMeasuresA(0);
-    runARef.current = true; setRunningA(true); setDualOn(false);
-    if (!schedRef.current) { scheduleBeats(); schedRef.current = setInterval(scheduleBeats, 25); }
-  };
-  const startBAligned = (phaseAnchor) => {
-    const ctx = ensureCtx();
-    if (!ctx) return;
-    nextBRef.current = computeAlignedStart(ctx, phaseAnchor, micOffsetRef.current); tickBRef.current = 0; setMeasuresB(0);
-    runBRef.current = true; setRunningB(true); setDualOn(false);
-    if (!schedRef.current) { scheduleBeats(); schedRef.current = setInterval(scheduleBeats, 25); }
-  };
-
   const toggleDual = () => { if (dualOn) { hardStop(); } else { hardStop(); startDual(); } };
 
   // ── keyboard shortcuts: Space / Enter = INICIAR/DETENER ────────────────────
@@ -1597,25 +1432,6 @@ export default function DualMetronome() {
       if (v >= 1 && v <= 600) handleRelBpmBase(v);
     }
   }, [handleRelBpmBase]);
-
-  // ESCUCHAR (DUAL SINC): detecta el BPM por micrófono, lo aplica y arranca
-  // el transporte ya alineado al pulso detectado — no hace falta apretar
-  // Play aparte.
-  const handleGlobalListen = useCallback(async () => {
-    setMicListening(true);
-    try {
-      const result = await recordAndDetectBpm({});
-      const { bpm, periodSec, anchorAt } = result;
-      handleRelBpmBase(Math.min(600, Math.max(1, bpm)));
-      startDual({ anchorAt, periodSec });
-      logMicAttempt({ mode: "sinc", ok: true, ...result });
-    } catch (err) {
-      setAudioError(LISTEN_ERROR_MESSAGES[err?.code] || "No se pudo detectar el tempo.");
-      logMicAttempt({ mode: "sinc", ok: false, code: err?.code });
-    } finally {
-      setMicListening(false);
-    }
-  }, [handleRelBpmBase, startDual]);
 
   const handleRelBase = useCallback((v) => {
     setRelBase(v); relBaseRef.current = v;
@@ -1670,35 +1486,6 @@ export default function DualMetronome() {
     setMetB((p) => ({ ...p, ...patch }));
     if (runBRef.current && Object.keys(patch).some((k) => NEEDS_RESTART.has(k))) restartNow();
   }, [restartNow]);
-
-  // ESCUCHAR (DUAL LIBRE, por panel): aplica el BPM detectado a ese lado
-  // nada más y lo arranca alineado — el otro lado no se toca.
-  const handleListenA = async () => {
-    try {
-      const result = await recordAndDetectBpm({});
-      const { bpm, periodSec, anchorAt } = result;
-      const v = Math.min(600, Math.max(1, bpm));
-      changeMetA({ bpm: v, baseBpm: v });
-      startAAligned({ anchorAt, periodSec });
-      logMicAttempt({ mode: "libre-a", ok: true, ...result });
-    } catch (err) {
-      setAudioError(LISTEN_ERROR_MESSAGES[err?.code] || "No se pudo detectar el tempo.");
-      logMicAttempt({ mode: "libre-a", ok: false, code: err?.code });
-    }
-  };
-  const handleListenB = async () => {
-    try {
-      const result = await recordAndDetectBpm({});
-      const { bpm, periodSec, anchorAt } = result;
-      const v = Math.min(600, Math.max(1, bpm));
-      changeMetB({ bpm: v, baseBpm: v });
-      startBAligned({ anchorAt, periodSec });
-      logMicAttempt({ mode: "libre-b", ok: true, ...result });
-    } catch (err) {
-      setAudioError(LISTEN_ERROR_MESSAGES[err?.code] || "No se pudo detectar el tempo.");
-      logMicAttempt({ mode: "libre-b", ok: false, code: err?.code });
-    }
-  };
 
   // ── mode switch ────────────────────────────────────────────────────────────
   const handleModeChange = useCallback((newMode) => {
@@ -1758,23 +1545,6 @@ export default function DualMetronome() {
     }
   }, [handlePolyBpm]);
 
-  // ESCUCHAR (DUAL POLY): mismo flujo que en DUAL SINC.
-  const handlePolyListen = useCallback(async () => {
-    setMicListening(true);
-    try {
-      const result = await recordAndDetectBpm({});
-      const { bpm, periodSec, anchorAt } = result;
-      handlePolyBpm(Math.min(600, Math.max(1, bpm)));
-      startDual({ anchorAt, periodSec });
-      logMicAttempt({ mode: "poly", ok: true, ...result });
-    } catch (err) {
-      setAudioError(LISTEN_ERROR_MESSAGES[err?.code] || "No se pudo detectar el tempo.");
-      logMicAttempt({ mode: "poly", ok: false, code: err?.code });
-    } finally {
-      setMicListening(false);
-    }
-  }, [handlePolyBpm, startDual]);
-
   const handlePracticeActivate = useCallback(() => {
     if (!runARef.current || !runBRef.current) startDual();
   }, [startDual]);
@@ -1783,11 +1553,11 @@ export default function DualMetronome() {
   // only stable config, never live playback state — so this can't fire on
   // every beat tick, only when the user actually changes a setting
   const settingsSnapshot = useMemo(() => ({
-    mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB, micOffsetMs,
+    mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB,
     metA: { bpm:metA.bpm, baseBpm:metA.baseBpm, timeSig:metA.timeSig, subdivision:metA.subdivision, strongSound:metA.strongSound, weakSound:metA.weakSound, volume:metA.volume, muted:metA.muted, accentGroups:metA.accentGroups },
     metB: { bpm:metB.bpm, baseBpm:metB.baseBpm, timeSig:metB.timeSig, subdivision:metB.subdivision, strongSound:metB.strongSound, weakSound:metB.weakSound, volume:metB.volume, muted:metB.muted, accentGroups:metB.accentGroups },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB, micOffsetMs,
+  }), [mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB,
     metA.bpm, metA.baseBpm, metA.timeSig, metA.subdivision, metA.strongSound, metA.weakSound, metA.volume, metA.muted, metA.accentGroups,
     metB.bpm, metB.baseBpm, metB.timeSig, metB.subdivision, metB.strongSound, metB.weakSound, metB.volume, metB.muted, metB.accentGroups]);
   useEffect(() => {
@@ -1852,7 +1622,7 @@ export default function DualMetronome() {
           ? <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" /></svg>
           : <svg width="16" height="16" viewBox="0 0 16 16"><polygon points="8,1 15,6 12,15 4,15 1,6" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>}
       </button>
-      <DualSwitch on={dualOn} onToggle={toggleDual} disabled={micListening} />
+      <DualSwitch on={dualOn} onToggle={toggleDual} />
       {performanceMode && practiceStatus.timerOn && (
         <div style={{
           position:"fixed", bottom:24, left:20, zIndex:1000,
@@ -1865,16 +1635,15 @@ export default function DualMetronome() {
       <>
       {/* header */}
       <div style={{ textAlign:"center", marginBottom:18 }}>
-        <h1 onClick={handleTitleTap} style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, color:"#eee", margin:0, letterSpacing:4, userSelect:"none", cursor:"default" }}>
+        <h1 style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, color:"#eee", margin:0, letterSpacing:4 }}>
           DUAL <span style={{ color:"#ff6b4a" }}>PUL</span><span style={{ color:"#4ad9ff" }}>SE</span>
         </h1>
       </div>
 
       {/* mode selector */}
-      <div style={{ marginBottom:6 }}>
+      <div style={{ marginBottom:20 }}>
         <ModeSelector mode={mode} setMode={handleModeChange} />
       </div>
-      <LatencyOffset value={micOffsetMs} onChange={handleMicOffsetChange} />
 
       {/* ── DUAL SINC (polirritmia) ── */}
       {isMetrica && (
@@ -1886,7 +1655,7 @@ export default function DualMetronome() {
             <PoliPanel
               bpmBase={relBpmBase} base={relBase} derivado={relDeriv}
               onBpmBase={handleRelBpmBase} onBase={handleRelBase} onDeriv={handleRelDeriv}
-              onTap={handleGlobalTap} onListen={handleGlobalListen} running={runningA || runningB}
+              onTap={handleGlobalTap}
             />
           </div>
           <SyncControls metA={metA} metB={metB} onChangeA={changeMetA} onChangeB={changeMetB} />
@@ -1908,7 +1677,7 @@ export default function DualMetronome() {
             <PolyMetriaPanel
               bpm={polyBpm} beatsA={polyBeatsA} beatsB={polyBeatsB}
               onBpm={handlePolyBpm} onBeatsA={handlePolyBeatsA} onBeatsB={handlePolyBeatsB}
-              onTap={handlePolyTap} onListen={handlePolyListen}
+              onTap={handlePolyTap}
               pulseCount={pulseCountA} running={runningA || runningB}
             />
           </div>
@@ -1933,8 +1702,8 @@ export default function DualMetronome() {
           </div>
           <PhaseSyncInfo bpmA={metA.bpm} bpmB={metB.bpm} pulseCountA={pulseCountA} running={dualOn} />
           <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", maxWidth:880, margin:"0 auto" }}>
-            <MetronomePanel color="A" state={metA} onChange={changeMetA} running={runningA} onToggle={toggleA} measures={measuresA} onListen={handleListenA} />
-            <MetronomePanel color="B" state={metB} onChange={changeMetB} running={runningB} onToggle={toggleB} measures={measuresB} onListen={handleListenB} />
+            <MetronomePanel color="A" state={metA} onChange={changeMetA} running={runningA} onToggle={toggleA} measures={measuresA} />
+            <MetronomePanel color="B" state={metB} onChange={changeMetB} running={runningB} onToggle={toggleB} measures={measuresB} />
           </div>
           <div style={{ maxWidth:880, margin:"22px auto 90px" }}>
             <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} onFinish={hardStop} status={practiceStatus} onStatus={updatePracticeStatus} />
