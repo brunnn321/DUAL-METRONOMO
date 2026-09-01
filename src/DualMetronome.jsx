@@ -1602,7 +1602,7 @@ export default function DualMetronome() {
                 showCycleRing cycleTargetA={libreCycleTargetA} cycleTargetB={libreCycleTargetB}
                 cyclePulseA={pulseCountA} cyclePulseB={pulseCountB} />
             ) : (
-              <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={isPolimetria} vizStyle={vizStyle} fullscreen
+              <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={false} vizStyle={vizStyle} fullscreen
                 showCycleRing={isPolimetria} cycleTargetA={polyTarget} cycleTargetB={polyTarget}
                 cyclePulseA={pulseCountA} cyclePulseB={pulseCountA} />
             )}
@@ -1669,7 +1669,7 @@ export default function DualMetronome() {
       {isPolimetria && (
         <>
           <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
-            <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} vizStyle={vizStyle}
+            <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={false} vizStyle={vizStyle}
               showCycleRing cycleTargetA={polyTarget} cycleTargetB={polyTarget}
               cyclePulseA={pulseCountA} cyclePulseB={pulseCountA} />
           </div>
