@@ -969,7 +969,7 @@ function CircleFullscreenToggle({ on, onToggle }) {
 }
 
 // ─── MIDI output toggle + channel/note config (top-left, next to vizStyle) ───
-function MidiPanel({ enabled, onToggleEnabled, chA, noteA, chB, noteB, onChA, onNoteA, onChB, onNoteB, clockEnabled, onToggleClock }) {
+function MidiPanel({ enabled, onToggleEnabled, chA, noteA, chB, noteB, onChA, onNoteA, onChB, onNoteB }) {
   const [open, setOpen] = useState(false);
   const numField = (label, value, onChange, max) => (
     <div style={{ flex:1 }}>
@@ -999,11 +999,6 @@ function MidiPanel({ enabled, onToggleEnabled, chA, noteA, chB, noteB, onChA, on
             borderRadius:6, color: enabled ? "#4ad9ff" : "#999", fontFamily:"monospace", fontSize:11,
             fontWeight:600, padding:"6px 0", cursor:"pointer",
           }}>{enabled ? "MIDI ACTIVO" : "ACTIVAR MIDI"}</button>
-          <button onClick={onToggleClock} title="La app sigue el tempo y el play/stop del reloj MIDI del DAW" style={{
-            background: clockEnabled ? "#a97cff1a" : "#252830", border:`1px solid ${clockEnabled ? "#a97cff" : "#3a3d47"}`,
-            borderRadius:6, color: clockEnabled ? "#a97cff" : "#999", fontFamily:"monospace", fontSize:11,
-            fontWeight:600, padding:"6px 0", cursor:"pointer",
-          }}>{clockEnabled ? "SIGUIENDO AL DAW" : "SEGUIR RELOJ DAW"}</button>
           <div>
             <div style={{ color:"#ff6b4a", fontSize:9, fontFamily:"monospace", letterSpacing:2, marginBottom:4 }}>A — {noteName(noteA)}</div>
             <div style={{ display:"flex", gap:6 }}>
@@ -1741,8 +1736,20 @@ export default function DualMetronome() {
       </button>
       <MidiPanel enabled={midiEnabled} onToggleEnabled={toggleMidi}
         chA={midiChA} noteA={midiNoteA} chB={midiChB} noteB={midiNoteB}
-        onChA={setMidiChA} onNoteA={setMidiNoteA} onChB={setMidiChB} onNoteB={setMidiNoteB}
-        clockEnabled={midiClockEnabled} onToggleClock={toggleMidiClock} />
+        onChA={setMidiChA} onNoteA={setMidiNoteA} onChB={setMidiChB} onNoteB={setMidiNoteB} />
+      <button onClick={toggleMidiClock} title="Reloj MIDI del DAW: tempo y play/stop" style={{
+        position:"fixed", top:16, left:112, zIndex:1000,
+        width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center",
+        background: midiClockEnabled ? "#a97cff1a" : "#1e2028",
+        border:`1px solid ${midiClockEnabled ? "#a97cff" : "#3a3d47"}`,
+        borderRadius:10, color: midiClockEnabled ? "#a97cff" : "#555", cursor:"pointer",
+        boxShadow: midiClockEnabled ? "0 0 12px #a97cff44" : "none",
+      }}>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+          <circle cx="8" cy="8" r="6.5" />
+          <path d="M8 4.5V8l2.5 1.5" strokeLinecap="round" />
+        </svg>
+      </button>
       <DualSwitch on={dualOn} onToggle={toggleDual} />
       {performanceMode && practiceStatus.timerOn && (
         <div style={{
