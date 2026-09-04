@@ -64,6 +64,9 @@ ipcMain.handle('midi:ensure-loopmidi', () => new Promise((resolve) => ensureLoop
 
 app.whenReady().then(() => {
   createWindow()
+  // fire-and-forget: try to have loopMIDI already up by the time the user
+  // opens the MIDI panel, instead of only reacting to that click
+  ensureLoopMidiRunning(() => {})
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
