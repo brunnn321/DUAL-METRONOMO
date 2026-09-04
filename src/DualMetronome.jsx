@@ -3,7 +3,7 @@ import { Play, Square, Volume2, VolumeX, ChevronRight, Lightbulb } from "lucide-
 // phase/cycle math lives in its own module so it can be unit-tested — see phase.test.js
 import { lcm, polyCycleTarget, libreCycleTargets, cycleIndex, cycleRemaining, isSyncPulse, derivedBpm, reduceRatio, perceptualBand, accentSet, groupsFromIndices } from "./phase.js";
 import { loadSettings, saveSettings } from "./settings.js";
-import { requestMidiOutput, sendMidiNote, noteName, MIDI_VELOCITY_ACCENT, MIDI_VELOCITY_NORMAL } from "./midi.js";
+import { requestMidiOutput, sendMidiNote, noteName, MIDI_VELOCITY_ACCENT, MIDI_VELOCITY_NORMAL, requestMidiInput, createMidiClockHandler } from "./midi.js";
 
 // ─── constants ────────────────────────────────────────────────────────────────
 const beatsPerMeasure = (sig) => parseInt(sig.split("/")[0]);
@@ -969,7 +969,7 @@ function CircleFullscreenToggle({ on, onToggle }) {
 }
 
 // ─── MIDI output toggle + channel/note config (top-left, next to vizStyle) ───
-function MidiPanel({ enabled, onToggleEnabled, chA, noteA, chB, noteB, onChA, onNoteA, onChB, onNoteB }) {
+function MidiPanel({ enabled, onToggleEnabled, chA, noteA, chB, noteB, onChA, onNoteA, onChB, onNoteB, clockEnabled, onToggleClock }) {
   const [open, setOpen] = useState(false);
   const numField = (label, value, onChange, max) => (
     <div style={{ flex:1 }}>
@@ -999,6 +999,11 @@ function MidiPanel({ enabled, onToggleEnabled, chA, noteA, chB, noteB, onChA, on
             borderRadius:6, color: enabled ? "#4ad9ff" : "#999", fontFamily:"monospace", fontSize:11,
             fontWeight:600, padding:"6px 0", cursor:"pointer",
           }}>{enabled ? "MIDI ACTIVO" : "ACTIVAR MIDI"}</button>
+          <button onClick={onToggleClock} title="La app sigue el tempo y el play/stop del reloj MIDI del DAW" style={{
+            background: clockEnabled ? "#a97cff1a" : "#252830", border:`1px solid ${clockEnabled ? "#a97cff" : "#3a3d47"}`,
+            borderRadius:6, color: clockEnabled ? "#a97cff" : "#999", fontFamily:"monospace", fontSize:11,
+            fontWeight:600, padding:"6px 0", cursor:"pointer",
+          }}>{clockEnabled ? "SIGUIENDO AL DAW" : "SEGUIR RELOJ DAW"}</button>
           <div>
             <div style={{ color:"#ff6b4a", fontSize:9, fontFamily:"monospace", letterSpacing:2, marginBottom:4 }}>A — {noteName(noteA)}</div>
             <div style={{ display:"flex", gap:6 }}>
@@ -1479,6 +1484,39 @@ export default function DualMetronome() {
     return () => window.removeEventListener("keydown", h);
   }, []);
 
+  // ── MIDI clock input — DAW is the tempo/transport master ───────────────────
+  // Tempo always drives metronome A (and the single shared bpm in SINC/
+  // POLIMETRÍA, since A and B share one field there); B keeps its own tempo
+  // in DUAL LIBRE. Start/Continue and Stop from the DAW mirror Space/Enter.
+  const [midiClockEnabled, setMidiClockEnabled] = useState(false);
+  const midiInRef = useRef(null);
+  const toggleMidiClock = useCallback(async () => {
+    if (midiClockEnabled) {
+      if (midiInRef.current) midiInRef.current.onmidimessage = null;
+      midiInRef.current = null; setMidiClockEnabled(false); return;
+    }
+    const input = await requestMidiInput();
+    if (!input) { setAudioError("No se encontró ninguna entrada MIDI. Activá un puerto virtual (loopMIDI) que reciba el reloj del DAW."); return; }
+    input.onmidimessage = createMidiClockHandler({
+      onTempo: (bpm) => {
+        if (modeRef.current === "metrica") handleRelBpmBase(bpm);
+        else if (modeRef.current === "polimetria") handlePolyBpm(bpm);
+        else changeMetA({ bpm });
+      },
+      onStart: () => {
+        if (modeRef.current === "libre") { if (!runARef.current) toggleA(); }
+        else if (!runARef.current) toggleDualRef.current();
+      },
+      onStop: () => {
+        if (modeRef.current === "libre") { if (runARef.current) toggleA(); }
+        else if (runARef.current) toggleDualRef.current();
+      },
+    });
+    midiInRef.current = input; setMidiClockEnabled(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [midiClockEnabled]);
+  useEffect(() => () => { if (midiInRef.current) midiInRef.current.onmidimessage = null; }, []);
+
   // ── polimetría param handlers ──────────────────────────────────────────────
   // Update both refs and state, then restart so there is zero phase drift.
   const applyPoliParams = useCallback((bpmBase, base, deriv) => {
@@ -1703,7 +1741,8 @@ export default function DualMetronome() {
       </button>
       <MidiPanel enabled={midiEnabled} onToggleEnabled={toggleMidi}
         chA={midiChA} noteA={midiNoteA} chB={midiChB} noteB={midiNoteB}
-        onChA={setMidiChA} onNoteA={setMidiNoteA} onChB={setMidiChB} onNoteB={setMidiNoteB} />
+        onChA={setMidiChA} onNoteA={setMidiNoteA} onChB={setMidiChB} onNoteB={setMidiNoteB}
+        clockEnabled={midiClockEnabled} onToggleClock={toggleMidiClock} />
       <DualSwitch on={dualOn} onToggle={toggleDual} />
       {performanceMode && practiceStatus.timerOn && (
         <div style={{

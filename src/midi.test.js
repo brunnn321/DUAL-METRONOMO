@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { noteName, sendMidiNote, MIDI_NOTE_DURATION_MS } from "./midi.js";
+import { noteName, sendMidiNote, MIDI_NOTE_DURATION_MS, createMidiClockHandler } from "./midi.js";
 
 describe("noteName", () => {
   it("maps MIDI note numbers to names", () => {
@@ -35,5 +35,64 @@ describe("sendMidiNote", () => {
     expect(onMsg[0]).toBe(0x90 | 15); // channel clamped to 16 (index 15)
     expect(onMsg[1]).toBe(127);       // note clamped
     expect(onMsg[2]).toBe(127);       // velocity clamped
+  });
+});
+
+describe("createMidiClockHandler", () => {
+  // fake clock: each call to now() advances by `stepMs`, starting at 0
+  const fakeClock = (stepMs) => {
+    let t = -stepMs;
+    return () => { t += stepMs; return t; };
+  };
+  const feedClockPulses = (handler, count, stepMs = 20.8333) => {
+    for (let i = 0; i < count; i++) handler({ data: [0xf8] });
+  };
+
+  it("reports bpm only after a full quarter note of pulses (24 ppqn)", () => {
+    const onTempo = vi.fn();
+    const handler = createMidiClockHandler({ onTempo, now: fakeClock(1000 / 24 / 2) }); // 120bpm
+    feedClockPulses(handler, 23);
+    expect(onTempo).not.toHaveBeenCalled();
+    feedClockPulses(handler, 1);
+    expect(onTempo).toHaveBeenCalledTimes(1);
+    expect(onTempo).toHaveBeenCalledWith(120);
+  });
+
+  it("throttles repeated tempo updates within MIN_APPLY_INTERVAL_MS", () => {
+    const onTempo = vi.fn();
+    const now = fakeClock(1000 / 24 / 2); // 120bpm pulse rate
+    const handler = createMidiClockHandler({ onTempo, now });
+    feedClockPulses(handler, 24); // first 120bpm report
+    expect(onTempo).toHaveBeenCalledTimes(1);
+    // one more pulse immediately after — same bpm, shouldn't fire even if it differed
+    feedClockPulses(handler, 1);
+    expect(onTempo).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onStart on Start/Continue and resets the pulse buffer", () => {
+    const onStart = vi.fn();
+    const onTempo = vi.fn();
+    const handler = createMidiClockHandler({ onTempo, onStart, now: fakeClock(20) });
+    feedClockPulses(handler, 10);
+    handler({ data: [0xfa] }); // Start
+    expect(onStart).toHaveBeenCalledTimes(1);
+    feedClockPulses(handler, 10); // not enough after reset to report tempo
+    expect(onTempo).not.toHaveBeenCalled();
+    handler({ data: [0xfb] }); // Continue
+    expect(onStart).toHaveBeenCalledTimes(2);
+  });
+
+  it("calls onStop on Stop messages", () => {
+    const onStop = vi.fn();
+    const handler = createMidiClockHandler({ onStop, now: fakeClock(20) });
+    handler({ data: [0xfc] });
+    expect(onStop).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects out-of-range bpm from startup jitter", () => {
+    const onTempo = vi.fn();
+    const handler = createMidiClockHandler({ onTempo, now: fakeClock(1000) }); // absurdly slow pulses
+    feedClockPulses(handler, 24);
+    expect(onTempo).not.toHaveBeenCalled();
   });
 });
