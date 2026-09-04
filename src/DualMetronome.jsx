@@ -1019,6 +1019,47 @@ function MidiPanel({ enabled, onToggleEnabled, chA, noteA, chB, noteB, onChA, on
   );
 }
 
+// ─── MIDI setup helper — shown when no port is found instead of a plain error;
+// walks the user through installing loopMIDI once, with a retry button ─────────
+function MidiSetupHelper({ kind, onRetry, onClose }) {
+  const unsupported = kind === "unsupported";
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:2100, background:"#000000aa", display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ background:"#1e2028", border:"1px solid #3a3d47", borderRadius:12, padding:20, width:300, fontFamily:"monospace", color:"#ddd" }}>
+        <div style={{ fontSize:13, fontWeight:700, marginBottom:10, color:"#a97cff" }}>
+          {unsupported ? "NAVEGADOR SIN MIDI" : "FALTA UN PUERTO MIDI"}
+        </div>
+        {unsupported ? (
+          <div style={{ fontSize:12, lineHeight:1.5, color:"#aaa" }}>
+            Este navegador no soporta MIDI por Web. Usá Chrome o Edge.
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize:12, lineHeight:1.5, color:"#aaa", marginBottom:12 }}>
+              Necesitás un puerto MIDI virtual corriendo:
+            </div>
+            <ol style={{ fontSize:11.5, lineHeight:1.7, color:"#ccc", margin:0, paddingLeft:18 }}>
+              <li>Instalá <a href="https://www.tobias-erichsen.de/software/loopmidi.html" target="_blank" rel="noreferrer" style={{ color:"#4ad9ff" }}>loopMIDI</a> (una sola vez)</li>
+              <li>Abrilo y creá un puerto (botón +)</li>
+              <li>Dejalo corriendo y volvé acá</li>
+            </ol>
+          </>
+        )}
+        <div style={{ display:"flex", gap:8, marginTop:16 }}>
+          {!unsupported && (
+            <button onClick={onRetry} style={{ flex:1, background:"#a97cff1a", border:"1px solid #a97cff", borderRadius:6, color:"#a97cff", fontFamily:"monospace", fontSize:11, fontWeight:600, padding:"8px 0", cursor:"pointer" }}>
+              VERIFICAR DE NUEVO
+            </button>
+          )}
+          <button onClick={onClose} style={{ flex: unsupported ? 1 : "0 0 auto", padding:"8px 14px", background:"#252830", border:"1px solid #3a3d47", borderRadius:6, color:"#999", fontFamily:"monospace", fontSize:11, cursor:"pointer" }}>
+            CERRAR
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── additive-meter accent editor ──────────────────────────────────────────────
 // One dot per pulse in the cycle. Pulse 0 is always the downbeat (can't be
 // toggled off); tapping any other dot marks/unmarks it as a group start,
@@ -1263,12 +1304,20 @@ export default function DualMetronome() {
   useEffect(() => { midiSettingsRef.current = { chA: midiChA, noteA: midiNoteA, chB: midiChB, noteB: midiNoteB }; }, [midiChA, midiNoteA, midiChB, midiNoteB]);
   // toggling off just stops future notes — a noteOff already scheduled by
   // sendMidiNote (≤30ms out) still lands, held by the browser's MIDI backend
+  // midiSetupKind drives the setup helper modal below — "output"/"input" when
+  // a port is missing (needs loopMIDI running), "unsupported" when the
+  // browser has no Web MIDI API at all (Safari/Firefox)
+  const [midiSetupKind, setMidiSetupKind] = useState(null);
+  const tryMidiOutput = useCallback(async () => {
+    if (!navigator.requestMIDIAccess) { setMidiSetupKind("unsupported"); return; }
+    const out = await requestMidiOutput();
+    if (!out) { setMidiSetupKind("output"); return; }
+    midiOutRef.current = out; setMidiEnabled(true); setMidiSetupKind(null);
+  }, []);
   const toggleMidi = useCallback(async () => {
     if (midiEnabled) { midiOutRef.current = null; setMidiEnabled(false); return; }
-    const out = await requestMidiOutput();
-    if (!out) { setAudioError("No se encontró ninguna salida MIDI. En Windows necesitás un puerto virtual como loopMIDI corriendo antes de activar esto."); return; }
-    midiOutRef.current = out; setMidiEnabled(true);
-  }, [midiEnabled]);
+    await tryMidiOutput();
+  }, [midiEnabled, tryMidiOutput]);
 
   // audio refs — the scheduler reads exclusively from these, never from state
   const ctxRef     = useRef(null);
@@ -1485,13 +1534,10 @@ export default function DualMetronome() {
   // in DUAL LIBRE. Start/Continue and Stop from the DAW mirror Space/Enter.
   const [midiClockEnabled, setMidiClockEnabled] = useState(false);
   const midiInRef = useRef(null);
-  const toggleMidiClock = useCallback(async () => {
-    if (midiClockEnabled) {
-      if (midiInRef.current) midiInRef.current.onmidimessage = null;
-      midiInRef.current = null; setMidiClockEnabled(false); return;
-    }
+  const tryMidiInput = useCallback(async () => {
+    if (!navigator.requestMIDIAccess) { setMidiSetupKind("unsupported"); return; }
     const input = await requestMidiInput();
-    if (!input) { setAudioError("No se encontró ninguna entrada MIDI. Activá un puerto virtual (loopMIDI) que reciba el reloj del DAW."); return; }
+    if (!input) { setMidiSetupKind("input"); return; }
     input.onmidimessage = createMidiClockHandler({
       onTempo: (bpm) => {
         if (modeRef.current === "metrica") handleRelBpmBase(bpm);
@@ -1507,9 +1553,16 @@ export default function DualMetronome() {
         else if (runARef.current) toggleDualRef.current();
       },
     });
-    midiInRef.current = input; setMidiClockEnabled(true);
+    midiInRef.current = input; setMidiClockEnabled(true); setMidiSetupKind(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [midiClockEnabled]);
+  }, []);
+  const toggleMidiClock = useCallback(async () => {
+    if (midiClockEnabled) {
+      if (midiInRef.current) midiInRef.current.onmidimessage = null;
+      midiInRef.current = null; setMidiClockEnabled(false); return;
+    }
+    await tryMidiInput();
+  }, [midiClockEnabled, tryMidiInput]);
   useEffect(() => () => { if (midiInRef.current) midiInRef.current.onmidimessage = null; }, []);
 
   // ── polimetría param handlers ──────────────────────────────────────────────
@@ -1701,6 +1754,11 @@ export default function DualMetronome() {
           <span>{audioError}</span>
           <button onClick={() => setAudioError(null)} style={{ background:"none", border:"none", color:"#ffb4b4", cursor:"pointer", fontSize:16, lineHeight:1, padding:"0 4px" }}>×</button>
         </div>
+      )}
+      {midiSetupKind && (
+        <MidiSetupHelper kind={midiSetupKind}
+          onRetry={midiSetupKind === "input" ? tryMidiInput : tryMidiOutput}
+          onClose={() => setMidiSetupKind(null)} />
       )}
       {circleFsMode && (
         <div style={{ position:"fixed", inset:0, zIndex:999, display:"flex", alignItems:"center", justifyContent:"center", background:"#15171c" }}>
