@@ -1,5 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
-import { noteName, sendMidiNote, MIDI_NOTE_DURATION_MS, createMidiClockHandler } from "./midi.js";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { noteName, sendMidiNote, MIDI_NOTE_DURATION_MS, createMidiClockHandler, requestMidiOutput, requestMidiInput, ensureLoopMidiThenRequest } from "./midi.js";
+
+afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("noteName", () => {
   it("maps MIDI note numbers to names", () => {
@@ -38,13 +40,84 @@ describe("sendMidiNote", () => {
   });
 });
 
+describe("requestMidiOutput / requestMidiInput", () => {
+  it("returns null when the browser has no Web MIDI API", async () => {
+    vi.stubGlobal("navigator", {});
+    expect(await requestMidiOutput()).toBe(null);
+    expect(await requestMidiInput()).toBe(null);
+  });
+
+  it("prefers a port named after loopMIDI/dual pulse over the first one found", async () => {
+    const wrong = { name: "Microsoft GS Wavetable Synth" };
+    const right = { name: "loopMIDI Port 1" };
+    vi.stubGlobal("navigator", {
+      requestMIDIAccess: vi.fn().mockResolvedValue({
+        outputs: new Map([["a", wrong], ["b", right]]),
+        inputs: new Map([["a", wrong], ["b", right]]),
+      }),
+    });
+    expect(await requestMidiOutput()).toBe(right);
+    expect(await requestMidiInput()).toBe(right);
+  });
+
+  it("falls back to the first port when none match a preferred name", async () => {
+    const first = { name: "Some Audio Interface" };
+    const second = { name: "Another Device" };
+    vi.stubGlobal("navigator", {
+      requestMIDIAccess: vi.fn().mockResolvedValue({
+        outputs: new Map([["a", first], ["b", second]]),
+        inputs: new Map(),
+      }),
+    });
+    expect(await requestMidiOutput()).toBe(first);
+    expect(await requestMidiInput()).toBe(null); // empty map — nothing to pick
+  });
+});
+
+describe("ensureLoopMidiThenRequest", () => {
+  it("returns the port immediately if requestFn already finds one", async () => {
+    const port = { name: "loopMIDI" };
+    const requestFn = vi.fn().mockResolvedValue(port);
+    expect(await ensureLoopMidiThenRequest(requestFn)).toBe(port);
+    expect(requestFn).toHaveBeenCalledTimes(1); // no electron assist needed
+  });
+
+  it("returns null with no electron bridge and no port (plain web build)", async () => {
+    vi.stubGlobal("window", {});
+    const requestFn = vi.fn().mockResolvedValue(null);
+    expect(await ensureLoopMidiThenRequest(requestFn)).toBe(null);
+  });
+
+  it("asks electronMidi to launch loopMIDI and retries once it did", async () => {
+    vi.useFakeTimers();
+    const port = { name: "loopMIDI" };
+    const requestFn = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(port);
+    const ensureLoopMidi = vi.fn().mockResolvedValue({ launched: true });
+    vi.stubGlobal("window", { electronMidi: { ensureLoopMidi } });
+    const resultPromise = ensureLoopMidiThenRequest(requestFn);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(await resultPromise).toBe(port);
+    expect(ensureLoopMidi).toHaveBeenCalledTimes(1);
+    expect(requestFn).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it("doesn't retry if electronMidi couldn't launch loopMIDI (not installed)", async () => {
+    const requestFn = vi.fn().mockResolvedValue(null);
+    const ensureLoopMidi = vi.fn().mockResolvedValue({ launched: false, reason: "not-installed" });
+    vi.stubGlobal("window", { electronMidi: { ensureLoopMidi } });
+    expect(await ensureLoopMidiThenRequest(requestFn)).toBe(null);
+    expect(requestFn).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("createMidiClockHandler", () => {
   // fake clock: each call to now() advances by `stepMs`, starting at 0
   const fakeClock = (stepMs) => {
     let t = -stepMs;
     return () => { t += stepMs; return t; };
   };
-  const feedClockPulses = (handler, count, stepMs = 20.8333) => {
+  const feedClockPulses = (handler, count) => {
     for (let i = 0; i < count; i++) handler({ data: [0xf8] });
   };
 

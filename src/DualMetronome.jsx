@@ -3,7 +3,7 @@ import { Play, Square, Volume2, VolumeX, ChevronRight, Lightbulb } from "lucide-
 // phase/cycle math lives in its own module so it can be unit-tested — see phase.test.js
 import { lcm, polyCycleTarget, libreCycleTargets, cycleIndex, cycleRemaining, isSyncPulse, derivedBpm, reduceRatio, perceptualBand, accentSet, groupsFromIndices } from "./phase.js";
 import { loadSettings, saveSettings } from "./settings.js";
-import { requestMidiOutput, sendMidiNote, noteName, MIDI_VELOCITY_ACCENT, MIDI_VELOCITY_NORMAL, requestMidiInput, createMidiClockHandler } from "./midi.js";
+import { requestMidiOutput, sendMidiNote, noteName, MIDI_VELOCITY_ACCENT, MIDI_VELOCITY_NORMAL, requestMidiInput, createMidiClockHandler, ensureLoopMidiThenRequest } from "./midi.js";
 
 // ─── constants ────────────────────────────────────────────────────────────────
 const beatsPerMeasure = (sig) => parseInt(sig.split("/")[0]);
@@ -1310,7 +1310,7 @@ export default function DualMetronome() {
   const [midiSetupKind, setMidiSetupKind] = useState(null);
   const tryMidiOutput = useCallback(async () => {
     if (!navigator.requestMIDIAccess) { setMidiSetupKind("unsupported"); return; }
-    const out = await requestMidiOutput();
+    const out = await ensureLoopMidiThenRequest(requestMidiOutput);
     if (!out) { setMidiSetupKind("output"); return; }
     midiOutRef.current = out; setMidiEnabled(true); setMidiSetupKind(null);
   }, []);
@@ -1536,7 +1536,7 @@ export default function DualMetronome() {
   const midiInRef = useRef(null);
   const tryMidiInput = useCallback(async () => {
     if (!navigator.requestMIDIAccess) { setMidiSetupKind("unsupported"); return; }
-    const input = await requestMidiInput();
+    const input = await ensureLoopMidiThenRequest(requestMidiInput);
     if (!input) { setMidiSetupKind("input"); return; }
     input.onmidimessage = createMidiClockHandler({
       onTempo: (bpm) => {

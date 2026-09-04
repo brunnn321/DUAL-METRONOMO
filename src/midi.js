@@ -14,15 +14,27 @@ export function noteName(note) {
   return `${NOTE_NAMES[n % 12]}${Math.floor(n / 12) - 1}`;
 }
 
+// Prefers a port whose name matches one of ours (case-insensitive substring,
+// checked in priority order) so a machine with several MIDI devices attached
+// doesn't grab the wrong one; falls back to the first port found — same
+// approach as JoyMIDI's autoOpen().
+const PREFERRED_PORT_NAMES = ["dual pulse", "loopmidi"];
+function pickPreferredPort(ports) {
+  for (const pref of PREFERRED_PORT_NAMES) {
+    const found = ports.find((p) => p.name?.toLowerCase().includes(pref));
+    if (found) return found;
+  }
+  return ports[0] ?? null;
+}
+
 // Requests a MIDI output port (Web MIDI API — Chrome/Edge only, not Safari/
-// Firefox). Returns the first available output, or null if unsupported,
-// denied, or no port exists (e.g. loopMIDI isn't running).
+// Firefox). Returns null if unsupported, denied, or no port exists (e.g.
+// loopMIDI isn't running).
 export async function requestMidiOutput() {
   if (!navigator.requestMIDIAccess) return null;
   try {
     const access = await navigator.requestMIDIAccess();
-    const first = access.outputs.values().next();
-    return first.done ? null : first.value;
+    return pickPreferredPort([...access.outputs.values()]);
   } catch {
     return null;
   }
@@ -43,16 +55,33 @@ export function sendMidiNote(output, channel, note, velocity, delayMs = 0, durat
 }
 
 // Requests a MIDI input port (e.g. the DAW's own output routed through a
-// loopMIDI port) — same "first available port" approach as requestMidiOutput.
+// loopMIDI port) — same preferred-name approach as requestMidiOutput.
 export async function requestMidiInput() {
   if (!navigator.requestMIDIAccess) return null;
   try {
     const access = await navigator.requestMIDIAccess();
-    const first = access.inputs.values().next();
-    return first.done ? null : first.value;
+    return pickPreferredPort([...access.inputs.values()]);
   } catch {
     return null;
   }
+}
+
+// Electron-only assist: if `requestFn` (requestMidiOutput/requestMidiInput)
+// finds nothing, ask the main process to launch loopMIDI (via the preload's
+// window.electronMidi bridge — undefined in the plain web build, where this
+// silently no-ops and just returns null like before) and retry once after
+// giving it a moment to register its port with the OS. Doesn't create the
+// port itself — the user still creates that once by hand in loopMIDI — it
+// only removes the "go open loopMIDI's window" step every session after.
+export async function ensureLoopMidiThenRequest(requestFn) {
+  const port = await requestFn();
+  if (port) return port;
+  const assist = typeof window !== "undefined" ? window.electronMidi : null;
+  if (!assist) return null;
+  const { launched } = await assist.ensureLoopMidi();
+  if (!launched) return null;
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  return requestFn();
 }
 
 const MIDI_CLOCK    = 0xf8;
