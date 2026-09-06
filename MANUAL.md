@@ -6,6 +6,32 @@ Dual Pulse es una aplicación de metrónomo doble orientada a la práctica rítm
 
 ---
 
+## Empezar en 30 segundos
+
+1. Abrí la app. Vas a ver dos metrónomos: **A (rojo)** y **B (celeste)**.
+2. Elegí un modo arriba: **DUAL SINC** para polirritmias (4 contra 3, 4 contra 5...), **DUAL TEMPO** para dos tempos independientes, **DUAL POLY** para compases de distinto largo con el mismo pulso.
+3. Poné el BPM y los números que quieras.
+4. Apretá **Espacio** (o el botón verde) para arrancar y parar.
+5. Si querés el patrón dentro de tu programa de música, tocá el botón de **exportar** (la flecha hacia abajo, arriba a la izquierda): baja un archivo `.mid` que arrastrás a tu proyecto.
+
+Eso es todo. El resto del manual explica cada cosa en detalle.
+
+### Los botones de arriba a la izquierda
+
+| Botón | Qué hace |
+|-------|----------|
+| Círculo/polígono amarillo | Cambia el estilo del visualizador |
+| Flecha hacia abajo | Exporta el patrón actual a un archivo `.mid` |
+
+### Los botones de arriba a la derecha
+
+| Botón | Qué hace |
+|-------|----------|
+| Pantalla completa | Agranda el visualizador |
+| Bombilla | Destello de pantalla en cada tiempo |
+
+---
+
 ## Conceptos básicos
 
 La aplicación siempre tiene **dos metrónomos activos: A (rojo) y B (celeste)**. El modo elegido determina qué relación tienen entre sí.
@@ -156,6 +182,26 @@ DUAL POLY implementa la polimetría "de manual": dos compases con pulso común. 
 
 ---
 
+## Exportar a MIDI
+
+El botón de **flecha hacia abajo** (arriba a la izquierda) baja un archivo `.mid` con el patrón que tenés configurado en ese momento. Lo arrastrás a tu programa de música (Studio One, Ableton, Reaper, Logic, FL, el que uses) y queda como dos pistas listas para sonar.
+
+**Cómo funciona:**
+
+- El archivo sale con el **tempo que tengas puesto en la app**. Si armás un 4 contra 3 a 90 BPM, el archivo viene a 90 BPM.
+- Trae **dos pistas separadas**, una para A y otra para B, en canales distintos, para que les pongas sonidos diferentes.
+- **A usa la nota 36 (Do) y B la nota 48 (Do una octava más arriba).** Están a una octava exacta para que se distingan fácil.
+- El **primer pulso de cada ciclo suena más fuerte** (velocity 110 contra 80), así se ve y se escucha dónde empieza cada vuelta.
+- El nombre del archivo dice qué es: `dualpulse-7-4-80bpm.mid` es un 7 contra 4 a 80 BPM.
+
+**Por qué esto es exacto y tocar en vivo no lo era.** Un archivo `.mid` no guarda tiempos reales, guarda posiciones sobre la grilla del programa. Por eso cae perfecto, sin desfase ni variación. La app elige la resolución del archivo según los números de tu patrón: para un 4 contra 7, por ejemplo, usa una resolución divisible por 7 para que ningún pulso tenga que redondearse. Con la resolución típica de 960 que usan muchos programas, un 4 contra 7 caería en 548,57 posiciones y habría error.
+
+**Un detalle al importar:** si tu programa tiene activada la cuantización automática al importar MIDI, desactivala. Si no, puede "corregir" los quintillos y septillos y arruinar justamente lo que hace especial al patrón. Lo mismo con la vista de partitura: puede dibujarlos raro aunque las posiciones estén bien. Mirá el editor de piano roll.
+
+**Cuánto dura cada archivo:** 8 ciclos en DUAL SINC, hasta 4 vueltas completas del ciclo largo en DUAL POLY (menos si el ciclo es muy largo, como 11 contra 13), y unos 16 compases en DUAL TEMPO. Si necesitás más, lo repetís en loop dentro de tu programa.
+
+---
+
 ## Práctica
 
 El panel **PRÁCTICA**, presente en los tres modos, tiene dos pestañas:
@@ -211,4 +257,6 @@ Cada metrónomo elige un sonido para el tiempo fuerte y otro para el débil de f
 - El audio usa **Web Audio API** nativa del navegador. No requiere plugins.
 - El scheduler corre con anticipación de 100 ms sobre un `setInterval` de 25 ms, para evitar glitches de audio.
 - Cambiar de modo detiene todo y reinicia el contexto de audio para evitar superposición de sonidos entre modos.
+- La exportación genera un **Standard MIDI File formato 1** con una pista de tempo más una por voz. La resolución (ticks por negra) se calcula por archivo como múltiplo del mínimo común múltiplo de los divisores del patrón, no se fija en el 960 habitual: así toda posición cae en un tick entero y no hay redondeo, ni siquiera en relaciones con 7, 11, 13 o 15.
+- La app **no se conecta a ningún dispositivo MIDI**. Antes mandaba notas en vivo a un puerto virtual, pero eso dependía del reloj del navegador y nunca podía ser exacto (se midieron hasta 12 ms de variación por nota, más el retardo de salida de audio sin compensar). Exportar un archivo elimina el problema de raíz en vez de mitigarlo.
 - El paneo estéreo (A izquierda, B derecha) no es solo cosmético: separar las dos capas por posición ayuda a que el oído no las funda en un ritmo confuso, algo especialmente importante en polirritmias con relaciones grandes.

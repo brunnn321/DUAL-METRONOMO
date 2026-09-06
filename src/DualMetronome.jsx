@@ -3,7 +3,7 @@ import { Play, Square, Volume2, VolumeX, ChevronRight, Lightbulb } from "lucide-
 // phase/cycle math lives in its own module so it can be unit-tested — see phase.test.js
 import { lcm, polyCycleTarget, libreCycleTargets, cycleIndex, cycleRemaining, isSyncPulse, derivedBpm, reduceRatio, perceptualBand, accentSet, groupsFromIndices } from "./phase.js";
 import { loadSettings, saveSettings } from "./settings.js";
-import { requestMidiOutput, sendMidiNote, noteName, MIDI_VELOCITY_ACCENT, MIDI_VELOCITY_NORMAL, requestMidiInput, createMidiClockHandler, ensureLoopMidiThenRequest } from "./midi.js";
+import { exportForState, downloadMidi } from "./midiExport.js";
 
 // ─── constants ────────────────────────────────────────────────────────────────
 const beatsPerMeasure = (sig) => parseInt(sig.split("/")[0]);
@@ -968,98 +968,6 @@ function CircleFullscreenToggle({ on, onToggle }) {
   );
 }
 
-// ─── MIDI output toggle + channel/note config (top-left, next to vizStyle) ───
-function MidiPanel({ enabled, onToggleEnabled, chA, noteA, chB, noteB, onChA, onNoteA, onChB, onNoteB }) {
-  const [open, setOpen] = useState(false);
-  const numField = (label, value, onChange, max) => (
-    <div style={{ flex:1 }}>
-      <div style={{ color:"#555", fontSize:8, fontFamily:"monospace" }}>{label}</div>
-      <input type="number" min={label === "NOTA" ? 0 : 1} max={max} value={value}
-        onChange={(e) => onChange(Math.min(max, Math.max(label === "NOTA" ? 0 : 1, parseInt(e.target.value) || 0)))}
-        style={{ background:"#252830", border:"1px solid #3a3d47", borderRadius:5, color:"#ddd", fontFamily:"monospace", fontSize:12, padding:"4px 6px", width:"100%", outline:"none" }} />
-    </div>
-  );
-  return (
-    <div style={{ position:"fixed", top:16, left:64, zIndex:1000 }}>
-      <button onClick={() => setOpen((o) => !o)} title="Salida MIDI" style={{
-        width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center",
-        background: enabled ? "#4ad9ff1a" : "#1e2028",
-        border:`1px solid ${enabled ? "#4ad9ff" : "#3a3d47"}`,
-        borderRadius:10, color: enabled ? "#4ad9ff" : "#555", cursor:"pointer",
-        boxShadow: enabled ? "0 0 12px #4ad9ff44" : "none",
-        fontFamily:"'JetBrains Mono',monospace", fontSize:9, fontWeight:700, letterSpacing:0.5,
-      }}>MIDI</button>
-      {open && (
-        <div style={{
-          marginTop:8, background:"#1e2028", border:"1px solid #252830", borderRadius:10,
-          padding:14, width:200, display:"flex", flexDirection:"column", gap:10,
-        }}>
-          <button onClick={onToggleEnabled} style={{
-            background: enabled ? "#4ad9ff1a" : "#252830", border:`1px solid ${enabled ? "#4ad9ff" : "#3a3d47"}`,
-            borderRadius:6, color: enabled ? "#4ad9ff" : "#999", fontFamily:"monospace", fontSize:11,
-            fontWeight:600, padding:"6px 0", cursor:"pointer",
-          }}>{enabled ? "MIDI ACTIVO" : "ACTIVAR MIDI"}</button>
-          <div>
-            <div style={{ color:"#ff6b4a", fontSize:9, fontFamily:"monospace", letterSpacing:2, marginBottom:4 }}>A — {noteName(noteA)}</div>
-            <div style={{ display:"flex", gap:6 }}>
-              {numField("CANAL", chA, onChA, 16)}
-              {numField("NOTA", noteA, onNoteA, 127)}
-            </div>
-          </div>
-          <div>
-            <div style={{ color:"#4ad9ff", fontSize:9, fontFamily:"monospace", letterSpacing:2, marginBottom:4 }}>B — {noteName(noteB)}</div>
-            <div style={{ display:"flex", gap:6 }}>
-              {numField("CANAL", chB, onChB, 16)}
-              {numField("NOTA", noteB, onNoteB, 127)}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── MIDI setup helper — shown when no port is found instead of a plain error;
-// walks the user through installing loopMIDI once, with a retry button ─────────
-function MidiSetupHelper({ kind, onRetry, onClose }) {
-  const unsupported = kind === "unsupported";
-  return (
-    <div style={{ position:"fixed", inset:0, zIndex:2100, background:"#000000aa", display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <div style={{ background:"#1e2028", border:"1px solid #3a3d47", borderRadius:12, padding:20, width:300, fontFamily:"monospace", color:"#ddd" }}>
-        <div style={{ fontSize:13, fontWeight:700, marginBottom:10, color:"#a97cff" }}>
-          {unsupported ? "NAVEGADOR SIN MIDI" : "FALTA UN PUERTO MIDI"}
-        </div>
-        {unsupported ? (
-          <div style={{ fontSize:12, lineHeight:1.5, color:"#aaa" }}>
-            Este navegador no soporta MIDI por Web. Usá Chrome o Edge.
-          </div>
-        ) : (
-          <>
-            <div style={{ fontSize:12, lineHeight:1.5, color:"#aaa", marginBottom:12 }}>
-              Necesitás un puerto MIDI virtual corriendo:
-            </div>
-            <ol style={{ fontSize:11.5, lineHeight:1.7, color:"#ccc", margin:0, paddingLeft:18 }}>
-              <li>Instalá <a href="https://www.tobias-erichsen.de/software/loopmidi.html" target="_blank" rel="noreferrer" style={{ color:"#4ad9ff" }}>loopMIDI</a> (una sola vez)</li>
-              <li>Abrilo y creá un puerto (botón +)</li>
-              <li>Dejalo corriendo y volvé acá</li>
-            </ol>
-          </>
-        )}
-        <div style={{ display:"flex", gap:8, marginTop:16 }}>
-          {!unsupported && (
-            <button onClick={onRetry} style={{ flex:1, background:"#a97cff1a", border:"1px solid #a97cff", borderRadius:6, color:"#a97cff", fontFamily:"monospace", fontSize:11, fontWeight:600, padding:"8px 0", cursor:"pointer" }}>
-              VERIFICAR DE NUEVO
-            </button>
-          )}
-          <button onClick={onClose} style={{ flex: unsupported ? 1 : "0 0 auto", padding:"8px 14px", background:"#252830", border:"1px solid #3a3d47", borderRadius:6, color:"#999", fontFamily:"monospace", fontSize:11, cursor:"pointer" }}>
-            CERRAR
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── additive-meter accent editor ──────────────────────────────────────────────
 // One dot per pulse in the cycle. Pulse 0 is always the downbeat (can't be
 // toggled off); tapping any other dot marks/unmarks it as a group start,
@@ -1290,35 +1198,6 @@ export default function DualMetronome() {
   const [practiceStatus, setPracticeStatus] = useState({});
   const updatePracticeStatus = useCallback((patch) => setPracticeStatus((p) => ({ ...p, ...patch })), []);
 
-  // MIDI output — mirrors each audio click as a note on its own channel, so
-  // the pulse pattern can be recorded/played in an external DAW (loopMIDI etc)
-  const [midiEnabled, setMidiEnabled] = useState(false);
-  const [midiChA,  setMidiChA]  = useState(savedSettings.midiChA  ?? 1);
-  const [midiNoteA, setMidiNoteA] = useState(savedSettings.midiNoteA ?? 36);
-  const [midiChB,  setMidiChB]  = useState(savedSettings.midiChB  ?? 2);
-  const [midiNoteB, setMidiNoteB] = useState(savedSettings.midiNoteB ?? 38);
-  const midiOutRef = useRef(null);
-  const midiEnabledRef = useRef(false);
-  const midiSettingsRef = useRef({ chA: midiChA, noteA: midiNoteA, chB: midiChB, noteB: midiNoteB });
-  useEffect(() => { midiEnabledRef.current = midiEnabled; }, [midiEnabled]);
-  useEffect(() => { midiSettingsRef.current = { chA: midiChA, noteA: midiNoteA, chB: midiChB, noteB: midiNoteB }; }, [midiChA, midiNoteA, midiChB, midiNoteB]);
-  // toggling off just stops future notes — a noteOff already scheduled by
-  // sendMidiNote (≤30ms out) still lands, held by the browser's MIDI backend
-  // midiSetupKind drives the setup helper modal below — "output"/"input" when
-  // a port is missing (needs loopMIDI running), "unsupported" when the
-  // browser has no Web MIDI API at all (Safari/Firefox)
-  const [midiSetupKind, setMidiSetupKind] = useState(null);
-  const tryMidiOutput = useCallback(async () => {
-    if (!navigator.requestMIDIAccess) { setMidiSetupKind("unsupported"); return; }
-    const out = await ensureLoopMidiThenRequest(requestMidiOutput);
-    if (!out) { setMidiSetupKind("output"); return; }
-    midiOutRef.current = out; setMidiEnabled(true); setMidiSetupKind(null);
-  }, []);
-  const toggleMidi = useCallback(async () => {
-    if (midiEnabled) { midiOutRef.current = null; setMidiEnabled(false); return; }
-    await tryMidiOutput();
-  }, [midiEnabled, tryMidiOutput]);
-
   // audio refs — the scheduler reads exclusively from these, never from state
   const ctxRef     = useRef(null);
   const schedRef   = useRef(null);
@@ -1342,7 +1221,7 @@ export default function DualMetronome() {
     if (!ctx || ctx.state === "closed") return;
     const ahead = ctx.currentTime + 0.1;
 
-    const sched = (runRef, otherRef, metRef, nextRef, tickRef, setMeasures, setMet, fixedPan, midiCh, midiNote) => {
+    const sched = (runRef, otherRef, metRef, nextRef, tickRef, setMeasures, setMet, fixedPan) => {
       if (!runRef.current) return;
       const sid = sessionRef.current; // snapshot — callbacks discard themselves if session changed
       const { bpm, timeSig, volume, muted, strongSound, weakSound, subdivision, accentGroups } = metRef.current;
@@ -1363,10 +1242,6 @@ export default function DualMetronome() {
           if (isAcc)       synthClick(ctx, t, strongSound, volume, pan);
           else if (isMain) synthClick(ctx, t, weakSound,   volume, pan);
           else             synthClick(ctx, t, weakSound,   volume, pan);
-          if (midiEnabledRef.current && midiOutRef.current) {
-            const midiDelay = Math.max(0, (t - ctx.currentTime) * 1000);
-            sendMidiNote(midiOutRef.current, midiCh, midiNote, isAcc ? MIDI_VELOCITY_ACCENT : MIDI_VELOCITY_NORMAL, midiDelay);
-          }
         }
         if (isAcc) {
           const bar   = Math.floor(tick / (subdivision * total)) + 1;
@@ -1397,9 +1272,8 @@ export default function DualMetronome() {
         tickRef.current++;
       }
     };
-    const { chA, noteA, chB, noteB } = midiSettingsRef.current;
-    sched(runARef, metBRef, metARef, nextARef, tickARef, setMeasuresA, setMetA, -1, chA, noteA);
-    sched(runBRef, metARef, metBRef, nextBRef, tickBRef, setMeasuresB, setMetB, +1, chB, noteB);
+    sched(runARef, metBRef, metARef, nextARef, tickARef, setMeasuresA, setMetA, -1);
+    sched(runBRef, metARef, metBRef, nextBRef, tickBRef, setMeasuresB, setMetB, +1);
   }, []);
 
   // centralized AudioContext creation — some browsers (old Safari, strict
@@ -1527,43 +1401,6 @@ export default function DualMetronome() {
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, []);
-
-  // ── MIDI clock input — DAW is the tempo/transport master ───────────────────
-  // Tempo always drives metronome A (and the single shared bpm in SINC/
-  // POLIMETRÍA, since A and B share one field there); B keeps its own tempo
-  // in DUAL LIBRE. Start/Continue and Stop from the DAW mirror Space/Enter.
-  const [midiClockEnabled, setMidiClockEnabled] = useState(false);
-  const midiInRef = useRef(null);
-  const tryMidiInput = useCallback(async () => {
-    if (!navigator.requestMIDIAccess) { setMidiSetupKind("unsupported"); return; }
-    const input = await ensureLoopMidiThenRequest(requestMidiInput);
-    if (!input) { setMidiSetupKind("input"); return; }
-    input.onmidimessage = createMidiClockHandler({
-      onTempo: (bpm) => {
-        if (modeRef.current === "metrica") handleRelBpmBase(bpm);
-        else if (modeRef.current === "polimetria") handlePolyBpm(bpm);
-        else changeMetA({ bpm });
-      },
-      onStart: () => {
-        if (modeRef.current === "libre") { if (!runARef.current) toggleA(); }
-        else if (!runARef.current) toggleDualRef.current();
-      },
-      onStop: () => {
-        if (modeRef.current === "libre") { if (runARef.current) toggleA(); }
-        else if (runARef.current) toggleDualRef.current();
-      },
-    });
-    midiInRef.current = input; setMidiClockEnabled(true); setMidiSetupKind(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const toggleMidiClock = useCallback(async () => {
-    if (midiClockEnabled) {
-      if (midiInRef.current) midiInRef.current.onmidimessage = null;
-      midiInRef.current = null; setMidiClockEnabled(false); return;
-    }
-    await tryMidiInput();
-  }, [midiClockEnabled, tryMidiInput]);
-  useEffect(() => () => { if (midiInRef.current) midiInRef.current.onmidimessage = null; }, []);
 
   // ── polimetría param handlers ──────────────────────────────────────────────
   // Update both refs and state, then restart so there is zero phase drift.
@@ -1718,16 +1555,32 @@ export default function DualMetronome() {
   // every beat tick, only when the user actually changes a setting
   const settingsSnapshot = useMemo(() => ({
     mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB,
-    midiChA, midiNoteA, midiChB, midiNoteB,
     metA: { bpm:metA.bpm, baseBpm:metA.baseBpm, timeSig:metA.timeSig, subdivision:metA.subdivision, strongSound:metA.strongSound, weakSound:metA.weakSound, volume:metA.volume, muted:metA.muted, accentGroups:metA.accentGroups },
     metB: { bpm:metB.bpm, baseBpm:metB.baseBpm, timeSig:metB.timeSig, subdivision:metB.subdivision, strongSound:metB.strongSound, weakSound:metB.weakSound, volume:metB.volume, muted:metB.muted, accentGroups:metB.accentGroups },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB, midiChA, midiNoteA, midiChB, midiNoteB,
+  }), [mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB,
     metA.bpm, metA.baseBpm, metA.timeSig, metA.subdivision, metA.strongSound, metA.weakSound, metA.volume, metA.muted, metA.accentGroups,
     metB.bpm, metB.baseBpm, metB.timeSig, metB.subdivision, metB.strongSound, metB.weakSound, metB.volume, metB.muted, metB.accentGroups]);
   useEffect(() => {
     saveSettings(settingsSnapshot); // best-effort — private mode or quota just skips
   }, [settingsSnapshot]);
+
+  // ── exportar a MIDI ─────────────────────────────────────────────────────────
+  // Un .mid guarda posiciones en ticks, no tiempos reales, así que lo exportado
+  // cae exacto sobre la grilla del DAW. Reemplazó a la salida MIDI en vivo, que
+  // no podía ser exacta porque dependía del reloj del navegador.
+  // metARef/metBRef en vez de metA/metB: tienen los valores efectivos que usa el
+  // scheduler y no cambian en cada pulso, así que el callback queda estable.
+  const [exportFlash, setExportFlash] = useState(false);
+  const handleExport = useCallback(() => {
+    const { bytes, fileName } = exportForState({
+      mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB,
+      metA: metARef.current, metB: metBRef.current,
+    });
+    downloadMidi(bytes, fileName);
+    setExportFlash(true);
+    setTimeout(() => setExportFlash(false), 900);
+  }, [mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB]);
 
   // ── render ─────────────────────────────────────────────────────────────────
   const isMetrica    = mode === "metrica";
@@ -1754,11 +1607,6 @@ export default function DualMetronome() {
           <span>{audioError}</span>
           <button onClick={() => setAudioError(null)} style={{ background:"none", border:"none", color:"#ffb4b4", cursor:"pointer", fontSize:16, lineHeight:1, padding:"0 4px" }}>×</button>
         </div>
-      )}
-      {midiSetupKind && (
-        <MidiSetupHelper kind={midiSetupKind}
-          onRetry={midiSetupKind === "input" ? tryMidiInput : tryMidiOutput}
-          onClose={() => setMidiSetupKind(null)} />
       )}
       {circleFsMode && (
         <div style={{ position:"fixed", inset:0, zIndex:999, display:"flex", alignItems:"center", justifyContent:"center", background:"#15171c" }}>
@@ -1792,20 +1640,18 @@ export default function DualMetronome() {
           ? <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" /></svg>
           : <svg width="16" height="16" viewBox="0 0 16 16"><polygon points="8,1 15,6 12,15 4,15 1,6" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>}
       </button>
-      <MidiPanel enabled={midiEnabled} onToggleEnabled={toggleMidi}
-        chA={midiChA} noteA={midiNoteA} chB={midiChB} noteB={midiNoteB}
-        onChA={setMidiChA} onNoteA={setMidiNoteA} onChB={setMidiChB} onNoteB={setMidiNoteB} />
-      <button onClick={toggleMidiClock} title="Reloj MIDI del DAW: tempo y play/stop" style={{
-        position:"fixed", top:16, left:112, zIndex:1000,
+      <button onClick={handleExport} title="Exportar este patrón a un archivo MIDI" style={{
+        position:"fixed", top:16, left:64, zIndex:1000,
         width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center",
-        background: midiClockEnabled ? "#a97cff1a" : "#1e2028",
-        border:`1px solid ${midiClockEnabled ? "#a97cff" : "#3a3d47"}`,
-        borderRadius:10, color: midiClockEnabled ? "#a97cff" : "#555", cursor:"pointer",
-        boxShadow: midiClockEnabled ? "0 0 12px #a97cff44" : "none",
+        background: exportFlash ? "#4aff9a1a" : "#1e2028",
+        border:`1px solid ${exportFlash ? "#4aff9a" : "#3a3d47"}`,
+        borderRadius:10, color: exportFlash ? "#4aff9a" : "#888", cursor:"pointer",
+        boxShadow: exportFlash ? "0 0 12px #4aff9a44" : "none",
       }}>
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
-          <circle cx="8" cy="8" r="6.5" />
-          <path d="M8 4.5V8l2.5 1.5" strokeLinecap="round" />
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M8 1.8v8.4" />
+          <path d="M4.6 6.8 8 10.2l3.4-3.4" />
+          <path d="M2.6 12.4v1.8h10.8v-1.8" />
         </svg>
       </button>
       <DualSwitch on={dualOn} onToggle={toggleDual} />

@@ -41,8 +41,7 @@
     },
     "files": [
       "dist/**/*",
-      "electron/main.cjs",
-      "electron/preload.cjs"
+      "electron/main.cjs"
     ],
     "win": {
       "target": [
