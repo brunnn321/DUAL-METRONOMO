@@ -1,8 +1,6 @@
 # Dual Pulse — Manual de usuario
 
-**URL:** https://dualpulse.vercel.app
-
-Dual Pulse es una aplicación de metrónomo doble orientada a la práctica rítmica avanzada. Funciona en el navegador, no requiere instalación.
+Dual Pulse es una aplicación de metrónomo doble orientada a la práctica rítmica avanzada.
 
 ---
 
@@ -220,7 +218,7 @@ Ambas pestañas siguen contando aunque colapses el panel o cambies de pestaña; 
 
 ## Guardar configuraciones
 
-La app **guarda automáticamente** el estado de ambos metrónomos (BPM, compás, subdivisión, sonidos, volumen, mute) y los parámetros de cada modo en el almacenamiento local del navegador (`localStorage`), bajo la clave `dualpulse-settings-v1`. No hay botones de guardar/cargar manuales ni presets nombrados: al volver a abrir la app, retoma donde quedaste.
+La app **guarda automáticamente** el estado de ambos metrónomos (BPM, compás, subdivisión, sonidos, volumen, mute) y los parámetros de cada modo en el almacenamiento local del programa, bajo la clave `dualpulse-settings-v1`. No hay botones de guardar/cargar manuales ni presets nombrados: al volver a abrir la app, retoma donde quedaste.
 
 El estado en vivo (si está sonando, en qué tiempo va) nunca se guarda — siempre arranca detenida.
 
@@ -258,9 +256,9 @@ Cada metrónomo elige un sonido para el tiempo fuerte y otro para el débil de f
 
 ## Notas técnicas
 
-- El audio usa **Web Audio API** nativa del navegador. No requiere plugins.
+- El audio usa **Web Audio API**. No requiere plugins ni controladores adicionales.
 - El scheduler corre con anticipación de 100 ms sobre un `setInterval` de 25 ms, para evitar glitches de audio.
 - Cambiar de modo detiene todo y reinicia el contexto de audio para evitar superposición de sonidos entre modos.
 - La exportación genera un **Standard MIDI File formato 1** con una pista de tempo más una por voz. La resolución (ticks por negra) se calcula por archivo como múltiplo del mínimo común múltiplo de los divisores del patrón, no se fija en el 960 habitual: así toda posición cae en un tick entero y no hay redondeo, ni siquiera en relaciones con 7, 11, 13 o 15.
-- La app **no se conecta a ningún dispositivo MIDI**. Antes mandaba notas en vivo a un puerto virtual, pero eso dependía del reloj del navegador y nunca podía ser exacto (se midieron hasta 12 ms de variación por nota, más el retardo de salida de audio sin compensar). Exportar un archivo elimina el problema de raíz en vez de mitigarlo.
+- La app **no se conecta a ningún dispositivo MIDI**. Antes mandaba notas en vivo a un puerto virtual, pero eso dependía del reloj interno del programa y nunca podía ser exacto (se midieron hasta 12 ms de variación por nota, más el retardo de salida de audio sin compensar). Exportar un archivo elimina el problema de raíz en vez de mitigarlo.
 - El paneo estéreo (A izquierda, B derecha) no es solo cosmético: separar las dos capas por posición ayuda a que el oído no las funda en un ritmo confuso, algo especialmente importante en polirritmias con relaciones grandes.
