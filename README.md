@@ -1,16 +1,82 @@
-# React + Vite
+<p align="center">
+  <img src="public/favicon.svg" width="96" alt="Dual Pulse">
+</p>
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+<h1 align="center">Dual Pulse</h1>
 
-Currently, two official plugins are available:
+<p align="center">
+  Metrónomo doble para práctica rítmica avanzada — polirritmia, politempo y polimetría.<br>
+  <a href="https://dualpulse.vercel.app"><strong>dualpulse.vercel.app</strong></a>
+</p>
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+Dos metrónomos independientes, **A (coral)** y **B (celeste)**, con tres formas distintas de
+relacionarlos entre sí. Corre en el navegador sin instalar nada, y también como aplicación de
+escritorio para Windows.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+El manual de uso completo está en **[MANUAL.md](MANUAL.md)**.
 
-## Expanding the ESLint configuration
+## Los tres modos
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+| Modo | Concepto | Relación |
+|------|----------|----------|
+| **DUAL SINC** | Polirritmia | Un ciclo compartido; A y B lo llenan con distinta cantidad de pulsos |
+| **DUAL TEMPO** | Politempo | BPM completamente independientes; se muestra el punto de convergencia |
+| **DUAL POLY** | Polimetría | Mismo BPM, ciclos de distinta longitud; los "1" se desfasan y reconvergen cada MCM |
+
+Además: subdivisiones, acentos aditivos, tap tempo, temporizador de práctica, práctica
+progresiva, visualizador circular con dos estilos, y **exportación del patrón a un archivo
+`.mid`** exacto por construcción.
+
+## Cómo usarlo
+
+**En la web** — abrir [dualpulse.vercel.app](https://dualpulse.vercel.app). No requiere
+instalación y funciona en el celular.
+
+**En Windows** — descargar el instalador desde la carpeta de entrega y ejecutarlo. La ventaja
+frente a la web es que funciona sin conexión y queda como programa propio.
+
+## Desarrollo
+
+```bash
+npm install
+npm run dev              # servidor de desarrollo
+npm test                 # 95 tests (vitest)
+npm run electron:preview # la app de escritorio, sin empaquetar
+npm run electron:build   # genera el instalador en release/
+```
+
+## Estructura
+
+```
+src/
+  DualMetronome.jsx   Componente principal: UI, scheduler de audio, los tres modos
+  phase.js            Matemática pura de fase y ciclos (MCM, razones, acentos, euclídeo)
+  midiExport.js       Escritura de Standard MIDI Files formato 1
+  settings.js         Persistencia en localStorage
+electron/
+  main.cjs            Proceso principal de la aplicación de escritorio
+build/
+  icon.ico / icon.png Icono de la aplicación y del instalador
+```
+
+La lógica que se puede probar sin navegador vive en `phase.js`, `midiExport.js` y
+`settings.js`, cada uno con su archivo de tests al lado.
+
+## Detalles técnicos
+
+- **Audio**: Web Audio API. Un solo `AudioContext` y un `setInterval` de 25 ms que programa
+  los pulsos con 100 ms de anticipación, para que el navegador no genere glitches.
+- **Estéreo**: A suena a la izquierda y B a la derecha. Separar las capas por posición evita
+  que el oído las funda en un ritmo confuso, algo que importa en relaciones grandes.
+- **Exportación MIDI**: la resolución (ticks por negra) se calcula por archivo como múltiplo
+  del mínimo común múltiplo de los divisores del patrón, en vez de fijarse en el habitual 960.
+  Así toda posición cae en un tick entero incluso con 7, 11, 13 o 15, sin redondeo.
+- **La app no se conecta a ningún dispositivo MIDI.** Antes enviaba notas en vivo a un puerto
+  virtual; se midió que el reloj del navegador introducía hasta 12 ms de variación por nota,
+  así que se reemplazó por exportación de archivos, que es exacta por construcción.
+
+## Licencia
+
+Proyecto personal, sin licencia de distribución definida.

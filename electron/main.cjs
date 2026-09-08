@@ -8,6 +8,7 @@ function createWindow() {
     minWidth: 380,
     minHeight: 600,
     title: 'Dual Pulse',
+    icon: path.join(__dirname, '../build/icon.png'),
     backgroundColor: '#15171c',
     webPreferences: {
       nodeIntegration: false,

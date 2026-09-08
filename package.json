@@ -39,11 +39,14 @@
     "directories": {
       "output": "release"
     },
+    "copyright": "Dual Pulse",
     "files": [
       "dist/**/*",
-      "electron/main.cjs"
+      "electron/main.cjs",
+      "build/icon.png"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -57,7 +60,11 @@
       "oneClick": true,
       "perMachine": false,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "shortcutName": "Dual Pulse",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "artifactName": "Dual Pulse ${version} - Instalador.${ext}"
     }
   }
 }
