@@ -20,17 +20,31 @@ const SOUNDS = [
   { key:"rim",   label:"RIM"   }, { key:"hat",   label:"HAT"   },
 ];
 
-// figures: how each beat (pulso) gets subdivided — Dual Libre only
-const FIGURES = [
-  { value:1 }, { value:2 }, { value:3 }, { value:4 }, { value:5 },
-  { value:6 }, { value:7 }, { value:8 }, { value:9 }, { value:11 }, { value:13 }, { value:15 },
-];
+const range = (from, to) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
 
-const BASE_VALUES     = [2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 15];
-const DERIVADO_VALUES = [2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 15];
+// Rango continuo 2..21. Antes la lista saltaba el 10, el 12 y el 14, así que no
+// se podía armar un 12 (blues en 12/8, 6/8 agrupado) ni un 10. Y las métricas
+// aksak reales llegan a 11, 13, 15 y 25 (kopanitsa búlgara), así que el techo
+// de 21 no es un capricho.
+const PULSE_VALUES  = range(2, 21); // relación A:B y pulsos por compás
+const FIGURE_VALUES = range(1, 21); // subdivisión del pulso — el 1 es "sin subdividir"
 
-// params that require a scheduler restart to stay in sync
-const NEEDS_RESTART = new Set(["bpm", "timeSig", "subdivision"]);
+// Cambios que obligan a rehacer la grilla desde cero. El BPM ya NO está aquí: se
+// aplica de forma continua con rescaleGrid(), sin cortar el audio. Tenerlo
+// afuera es además la defensa contra el único caso que rompe el reescalado —
+// cambiar compás y tempo en el mismo movimiento, donde el factor deja de ser
+// común a las dos voces.
+const NEEDS_RESTART = new Set(["timeSig", "subdivision"]);
+
+// Cuánto agenda el scheduler por adelantado. rescaleGrid() ancla el cambio de
+// tempo más allá de este horizonte para no pisar pulsos que ya salieron.
+const LOOKAHEAD = 0.1;
+
+// Niveles relativos al volumen del pulso. Antes la subdivisión sonaba idéntica
+// al pulso que divide, con lo cual no se distinguía el tiempo de sus divisiones
+// y la subdivisión no cumplía su propósito.
+const SUB_ACCENT_LEVEL = 0.75; // subdivisión que abre grupo
+const SUB_LEVEL        = 0.45; // subdivisión normal
 
 // ─── audio ────────────────────────────────────────────────────────────────────
 // pan: -1 = full left, 0 = center, +1 = full right
@@ -62,6 +76,28 @@ function synthClick(ctx, time, soundKey, volume, pan = 0) {
   g.gain.linearRampToValueAtTime(volume * 0.85, time + 0.004);
   g.gain.exponentialRampToValueAtTime(0.001, time + decay);
   osc.start(time); osc.stop(time + decay + 0.01);
+}
+
+// ─── number select ────────────────────────────────────────────────────────────
+// Reemplaza las grillas de botones numéricos. Con 20 valores la grilla ocupaba
+// dos filas y empujaba el panel de práctica fuera de la pantalla; un <select>
+// es un solo control, se elige escribiendo la cifra con el teclado y no admite
+// valores inválidos.
+function NumberSelect({ label, value, values, onChange, accent }) {
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+      {label && (
+        <span style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1 }}>{label}</span>
+      )}
+      <select value={value} onChange={(e) => onChange(parseInt(e.target.value))} style={{
+        background:"#252830", border:`1px solid ${accent}`, borderRadius:6, color:accent,
+        fontFamily:"'JetBrains Mono',monospace", fontSize:17, fontWeight:700,
+        padding:"6px 10px", outline:"none", cursor:"pointer", minWidth:66,
+      }}>
+        {values.map((v) => <option key={v} value={v}>{v}</option>)}
+      </select>
+    </div>
+  );
 }
 
 // ─── mode selector ────────────────────────────────────────────────────────────
@@ -360,7 +396,7 @@ function CircularVisualizer({
 }
 
 // ─── polimetría panel ─────────────────────────────────────────────────────────
-function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap }) {
+function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap, metA, metB, onChangeA, onChangeB, bpmFlash }) {
   const ratio    = `${derivado}:${base}`;
   const bpmB     = derivedBpm(bpmBase, base, derivado);
   const fmtBpm   = (v) => Number.isInteger(v) ? v : v.toFixed(2);
@@ -386,7 +422,12 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap 
       <div>
         <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:2, marginBottom:8 }}>BPM A</div>
         <div style={{ display:"flex", alignItems:"center", gap:16 }}>
-          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:52, fontWeight:700, color:"#ff6b4a", lineHeight:1, minWidth:96 }}>
+          <div style={{
+            fontFamily:"'JetBrains Mono',monospace", fontSize:52, fontWeight:700, lineHeight:1, minWidth:96,
+            color: bpmFlash ? "#ffd04a" : "#ff6b4a",
+            textShadow: bpmFlash ? "0 0 18px #ffd04a" : "none",
+            transition: bpmFlash ? "none" : "color 0.45s, text-shadow 0.45s",
+          }}>
             {bpmBase}
           </div>
           <div style={{ flex:1, display:"flex", flexDirection:"column", gap:6 }}>
@@ -406,46 +447,23 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap 
         </div>
       </div>
 
-      {/* selectors */}
+      {/* selectores y acentos — el acento vive junto al compás, porque en
+          métrica aditiva el acento ES la métrica: un 8 sin acentuar es
+          indistinguible de un 4/4 */}
       <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
-        <div style={{ flex:1, minWidth:200 }}>
-          <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:8 }}>
-            A
+        {[
+          { label:"A", accent:"#ff6b4a", val:base,     set:onBase,  met:metA, onChange:onChangeA },
+          { label:"B", accent:"#4ad9ff", val:derivado, set:onDeriv, met:metB, onChange:onChangeB },
+        ].map(({ label, accent, val, set, met, onChange }) => (
+          <div key={label} style={{ flex:1, minWidth:200, display:"flex", flexDirection:"column", gap:10 }}>
+            <NumberSelect label={label} value={val} values={PULSE_VALUES} onChange={set} accent={accent} />
+            <div>
+              <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:6 }}>ACENTOS</div>
+              <AccentDots total={beatsPerMeasure(met.timeSig)} groups={met.accentGroups}
+                onChange={(g) => onChange({ accentGroups: g })} accent={accent} />
+            </div>
           </div>
-          <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-            {BASE_VALUES.map((v) => {
-              const on = v === base;
-              return (
-                <button key={v} onClick={() => onBase(v)} style={{
-                  background: on ? "#ff6b4a" : "#252830",
-                  border:`1px solid ${on ? "#ff6b4a" : "#3a3d47"}`,
-                  borderRadius:6, color: on ? "#15171c" : "#666",
-                  fontFamily:"'JetBrains Mono',monospace", fontSize:15, fontWeight: on ? 700 : 400,
-                  padding:"6px 13px", cursor:"pointer", minWidth:38, textAlign:"center",
-                }}>{v}</button>
-              );
-            })}
-          </div>
-        </div>
-        <div style={{ flex:1, minWidth:200 }}>
-          <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:8 }}>
-            B
-          </div>
-          <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-            {DERIVADO_VALUES.map((v) => {
-              const on = v === derivado;
-              return (
-                <button key={v} onClick={() => onDeriv(v)} style={{
-                  background: on ? "#4ad9ff" : "#252830",
-                  border:`1px solid ${on ? "#4ad9ff" : "#3a3d47"}`,
-                  borderRadius:6, color: on ? "#15171c" : "#666",
-                  fontFamily:"'JetBrains Mono',monospace", fontSize:15, fontWeight: on ? 700 : 400,
-                  padding:"6px 13px", cursor:"pointer", minWidth:38, textAlign:"center",
-                }}>{v}</button>
-              );
-            })}
-          </div>
-        </div>
+        ))}
       </div>
 
       {/* info */}
@@ -495,13 +513,24 @@ function SoundSelect({ label, value, onChange, accent }) {
 }
 
 // ─── metronome panel ──────────────────────────────────────────────────────────
-function MetronomePanel({ color, state, onChange, running, onToggle, measures }) {
-  const { bpm, volume, muted, subTick, strongSound, weakSound, subdivision } = state;
+function MetronomePanel({ color, state, onChange, running, onToggle, measures, bpmFlash }) {
+  const { bpm, volume, muted, subTick, strongSound, weakSound, subdivision, subAccents } = state;
   const [soundOpen, setSoundOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(true);
   const tapRef = useRef([]);
   const accent    = color === "A" ? "#ff6b4a" : "#4ad9ff";
   const dimAccent = color === "A" ? "#6a2a18" : "#174d5e";
+
+  // Agrupación interna del pulso. effectiveGroups vuelve a plano solo si los
+  // grupos guardados ya no suman la subdivisión actual, así que cambiar de
+  // subdivisión no deja un patrón viejo que no entra.
+  const subAccentIdx = accentSet(effectiveGroups(subAccents, subdivision));
+  const toggleSubAccent = (i) => {
+    if (i === 0) return; // el pulso siempre abre grupo
+    const next = new Set(subAccentIdx);
+    if (next.has(i)) next.delete(i); else next.add(i);
+    onChange({ subAccents: groupsFromIndices(next, subdivision) });
+  };
 
   const handleTap = () => {
     const now = performance.now();
@@ -548,7 +577,12 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures })
       </div>
       <div style={{ display: settingsOpen ? "flex" : "none", flexDirection:"column", gap:14 }}>
       <div style={{ display:"flex", alignItems:"center", gap:16 }}>
-        <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:52, fontWeight:700, color:accent, lineHeight:1, minWidth:96, textAlign:"center" }}>
+        <div style={{
+          fontFamily:"'JetBrains Mono',monospace", fontSize:52, fontWeight:700, lineHeight:1, minWidth:96, textAlign:"center",
+          color: bpmFlash ? "#ffd04a" : accent,
+          textShadow: bpmFlash ? "0 0 18px #ffd04a" : "none",
+          transition: bpmFlash ? "none" : "color 0.45s, text-shadow 0.45s",
+        }}>
           {Math.round(bpm)}
         </div>
         <div style={{ flex:1, display:"flex", flexDirection:"column", gap:6 }}>
@@ -568,24 +602,37 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures })
         </div>
       </div>
 
-      <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-        {FIGURES.map(({ value }) => {
-          const on = subdivision === value;
-          return (
-            <button key={value} onClick={() => onChange({ subdivision: value })} style={{
-              background: on ? accent : "#252830", border:`1px solid ${on ? accent : "#3a3d47"}`,
-              borderRadius:6, color: on ? "#15171c" : "#666",
-              fontFamily:"'JetBrains Mono',monospace", fontSize:15, fontWeight: on ? 700 : 400,
-              padding:"6px 13px", cursor:"pointer", minWidth:38, textAlign:"center",
-            }}>{value}</button>
-          );
-        })}
+      <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+        <NumberSelect label="SUBDIV" value={subdivision} values={FIGURE_VALUES}
+          onChange={(v) => onChange({ subdivision: v })} accent={accent} />
+        {subdivision > 1 && (
+          <span style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>
+            CLIC EN UN PUNTO = ACENTO
+          </span>
+        )}
       </div>
 
+      {/* La misma fila hace dos cosas: muestra qué subdivisión está sonando y
+          deja marcar dónde abre cada grupo. Sin agrupar, una subdivisión alta
+          es una nube de clicks — un 21 se estudia como 3+3+3+3+3+3+3, o como
+          2+2+3 repetido. */}
       <div style={{ display:"flex", gap:6, justifyContent:"center", flexWrap:"wrap" }}>
-        {Array.from({ length:subdivision }, (_,i) => (
-          <div key={i} style={{ width:15, height:15, borderRadius:"50%", background: subTick===i ? (i===0 ? accent : `${accent}77`) : (i===0 ? dimAccent : "#222530"), boxShadow: subTick===i ? `0 0 8px ${accent}` : "none", border:`1px solid ${accent}1a`, transition:"background 0.04s, box-shadow 0.04s" }} />
-        ))}
+        {Array.from({ length:subdivision }, (_,i) => {
+          const isNow = subTick === i;
+          const isAcc = subAccentIdx.has(i);
+          return (
+            <button key={i} onClick={() => toggleSubAccent(i)} disabled={i === 0}
+              title={i === 0 ? "El pulso siempre abre grupo" : "Marcar inicio de grupo"}
+              style={{
+                width:15, height:15, borderRadius:"50%", padding:0,
+                cursor: i === 0 ? "default" : "pointer",
+                background: isNow ? (isAcc ? accent : `${accent}77`) : (isAcc ? dimAccent : "#222530"),
+                boxShadow: isNow ? `0 0 8px ${accent}` : "none",
+                border:`1px solid ${isAcc ? accent : accent + "1a"}`,
+                transition:"background 0.04s, box-shadow 0.04s",
+              }} />
+          );
+        })}
       </div>
       </div>
 
@@ -637,10 +684,11 @@ function DualSwitch({ on, onToggle }) {
 // ─── progressive practice ─────────────────────────────────────────────────────
 function ProgressivePractice({ onBpmChange, onActivate, running, onStatus }) {
   const [on, setOn]     = useState(false);
-  const [cfg, setCfg]   = useState({ bpmStart:60, bpmMax:140, increment:5, intervalSec:120, onMax:"stop" });
-  const [curBpm, setCurBpm]     = useState(60);
+  const [cfg, setCfg]   = useState({ bpmStart:30, bpmMax:140, increment:5, intervalSec:120, onMax:"stop" });
+  const [curBpm, setCurBpm]     = useState(30);
   const [timeLeft, setTimeLeft] = useState(120);
-  const curBpmRef = useRef(60);
+  const curBpmRef = useRef(30);
+  const leftRef   = useRef(120); // cuenta regresiva del paso, fuera del render
   const cfgRef    = useRef(cfg);
   const onBpmRef  = useRef(onBpmChange);
   const timerRef  = useRef(null);
@@ -656,25 +704,34 @@ function ProgressivePractice({ onBpmChange, onActivate, running, onStatus }) {
 
   const start = () => {
     curBpmRef.current = cfg.bpmStart;
+    leftRef.current   = cfg.intervalSec;
     setCurBpm(cfg.bpmStart); setTimeLeft(cfg.intervalSec);
     onBpmRef.current(cfg.bpmStart); onActivate(); setOn(true);
   };
   const stop = () => { setOn(false); clearInterval(timerRef.current); };
 
+  // La cuenta vive en un ref y los efectos ocurren en el callback del interval,
+  // no dentro de un updater de setState. Un updater tiene que ser puro: React
+  // lo puede invocar más de una vez, y StrictMode lo hace a propósito para
+  // exponer justamente esto. Con el incremento adentro del updater, cada paso
+  // subía el tempo dos veces — invisible con pasos de 120 s, evidente con 1 s.
   useEffect(() => {
     if (!on) { clearInterval(timerRef.current); return; }
     timerRef.current = setInterval(() => {
-      setTimeLeft((t) => {
-        if (t > 1) return t - 1;
-        const c = cfgRef.current;
-        const next = Math.min(curBpmRef.current + c.increment, c.bpmMax);
-        curBpmRef.current = next; setCurBpm(next); onBpmRef.current(next);
-        if (next >= c.bpmMax) {
-          if (c.onMax === "stop")    stop();
-          if (c.onMax === "restart") { curBpmRef.current = c.bpmStart; setCurBpm(c.bpmStart); onBpmRef.current(c.bpmStart); }
-        }
-        return c.intervalSec;
-      });
+      const c = cfgRef.current;
+      if (leftRef.current > 1) {
+        leftRef.current -= 1;
+        setTimeLeft(leftRef.current);
+        return;
+      }
+      const next = Math.min(curBpmRef.current + c.increment, c.bpmMax);
+      curBpmRef.current = next; setCurBpm(next); onBpmRef.current(next);
+      leftRef.current = c.intervalSec;
+      setTimeLeft(c.intervalSec);
+      if (next >= c.bpmMax) {
+        if (c.onMax === "stop")    stop();
+        if (c.onMax === "restart") { curBpmRef.current = c.bpmStart; setCurBpm(c.bpmStart); onBpmRef.current(c.bpmStart); }
+      }
     }, 1000);
     return () => clearInterval(timerRef.current);
   }, [on]);
@@ -688,7 +745,7 @@ function ProgressivePractice({ onBpmChange, onActivate, running, onStatus }) {
         </button>
       </div>
       <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom: on ? 14 : 0 }}>
-        {[["BPM INICIO","bpmStart",1,580],["BPM MÁX","bpmMax",2,600],["+ BPM","increment",1,20],["SEG / PASO","intervalSec",10,600]].map(([lbl,k,mn,mx]) => (
+        {[["BPM INICIO","bpmStart",1,580],["BPM MÁX","bpmMax",2,600],["+ BPM","increment",1,20],["SEG / PASO","intervalSec",1,600]].map(([lbl,k,mn,mx]) => (
           <div key={k} style={{ display:"flex", flexDirection:"column", gap:3, minWidth:80 }}>
             <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>{lbl}</div>
             <input type="number" min={mn} max={mx} value={cfg[k]} onChange={(e) => set(k, Math.max(mn, parseInt(e.target.value)||mn))} disabled={on}
@@ -752,6 +809,7 @@ function PracticeTimer({ onFinish, onStatus }) {
   const [done, setDone]       = useState(false);
   const [timeLeft, setTimeLeft] = useState(15 * 60);
   const timerRef  = useRef(null);
+  const leftRef   = useRef(15 * 60); // cuenta regresiva, fuera del render
   const onFinishRef = useRef(onFinish);
   const onStatusRef = useRef(onStatus);
   useEffect(() => { onFinishRef.current = onFinish; }, [onFinish]);
@@ -762,23 +820,28 @@ function PracticeTimer({ onFinish, onStatus }) {
 
   const fmt = (s) => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 
-  const start = () => { setTimeLeft(minutes * 60); setDone(false); setOn(true); };
+  const start = () => { leftRef.current = minutes * 60; setTimeLeft(minutes * 60); setDone(false); setOn(true); };
   const stop  = () => { setOn(false); clearInterval(timerRef.current); };
 
+  // Mismo criterio que en la práctica progresiva: la alarma y el onFinish son
+  // efectos, así que van en el callback del interval y no dentro del updater,
+  // que React puede invocar más de una vez.
   useEffect(() => {
     if (!on) { clearInterval(timerRef.current); return; }
     timerRef.current = setInterval(() => {
-      setTimeLeft((t) => {
-        if (t > 1) return t - 1;
-        setOn(false); setDone(true);
-        playAlarm(); onFinishRef.current();
-        return 0;
-      });
+      if (leftRef.current > 1) {
+        leftRef.current -= 1;
+        setTimeLeft(leftRef.current);
+        return;
+      }
+      leftRef.current = 0;
+      setTimeLeft(0); setOn(false); setDone(true);
+      playAlarm(); onFinishRef.current();
     }, 1000);
     return () => clearInterval(timerRef.current);
   }, [on]);
 
-  const pick = (m) => { setMinutes(m); if (!on) { setTimeLeft(m * 60); setDone(false); } };
+  const pick = (m) => { setMinutes(m); if (!on) { leftRef.current = m * 60; setTimeLeft(m * 60); setDone(false); } };
 
   return (
     <div style={{ background:"#1e2028", borderRadius:12, padding:20, border:`1px solid ${on ? "#ffd04a44" : "#252830"}`, transition:"border-color 0.3s" }}>
@@ -1042,26 +1105,16 @@ function SyncControls({ metA, metB, onChangeA, onChangeB }) {
         ))}
       </div>
 
-      {/* additive-meter accents row */}
-      <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
-        {[
-          { label:"A", accent:"#ff6b4a", met:metA, onChange:onChangeA },
-          { label:"B", accent:"#4ad9ff", met:metB, onChange:onChangeB },
-        ].map(({ label, accent, met, onChange }) => (
-          <div key={label} style={{ flex:1, minWidth:200 }}>
-            <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:6 }}>ACENTOS</div>
-            <AccentDots total={beatsPerMeasure(met.timeSig)} groups={met.accentGroups}
-              onChange={(g) => onChange({ accentGroups: g })} accent={accent} />
-          </div>
-        ))}
-      </div>
+      {/* Los acentos ya no viven aquí: se mudaron al panel de BPM Y RELACIÓN,
+          junto al compás. El acento no es una decisión de timbre — en métrica
+          aditiva el acento ES la métrica. */}
       </div>
     </div>
   );
 }
 
 // ─── polimetría panel ─────────────────────────────────────────────────────────
-function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap, pulseCount, running }) {
+function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap, pulseCount, running, metA, metB, onChangeA, onChangeB, bpmFlash }) {
   const lcmAB = lcm(beatsA, beatsB);
   const remaining = cycleRemaining(pulseCount, lcmAB);
   const [open, setOpen] = useState(true);
@@ -1079,7 +1132,12 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap
       <div>
         <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:2, marginBottom:8 }}>BPM</div>
         <div style={{ display:"flex", alignItems:"center", gap:16 }}>
-          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:52, fontWeight:700, color:"#4aff9a", lineHeight:1, minWidth:96 }}>{bpm}</div>
+          <div style={{
+            fontFamily:"'JetBrains Mono',monospace", fontSize:52, fontWeight:700, lineHeight:1, minWidth:96,
+            color: bpmFlash ? "#ffd04a" : "#4aff9a",
+            textShadow: bpmFlash ? "0 0 18px #ffd04a" : "none",
+            transition: bpmFlash ? "none" : "color 0.45s, text-shadow 0.45s",
+          }}>{bpm}</div>
           <div style={{ flex:1, display:"flex", flexDirection:"column", gap:6 }}>
             <input type="range" min={1} max={600} value={bpm} onChange={(e) => onBpm(parseInt(e.target.value))} style={{ width:"100%", accentColor:"#4aff9a" }} />
             <div style={{ display:"flex", gap:5 }}>
@@ -1092,26 +1150,19 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap
         </div>
       </div>
 
-      {/* selectores de tiempos */}
+      {/* selectores de tiempos y acentos — el acento define la métrica, así que
+          vive junto al número de pulsos, no junto al volumen */}
       <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
         {[
-          { label:"A", color:"#ff6b4a", val:beatsA, set:onBeatsA },
-          { label:"B", color:"#4ad9ff", val:beatsB, set:onBeatsB },
-        ].map(({ label, color, val, set }) => (
-          <div key={label} style={{ flex:1, minWidth:200 }}>
-            <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:8 }}>
-              <span style={{ color }}>●</span> {label}
-            </div>
-            <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-              {[2,3,4,5,6,7,8,9,11,13,15].map((n) => (
-                <button key={n} onClick={() => set(n)} style={{
-                  background: val===n ? color : "#252830",
-                  border:`1px solid ${val===n ? color : "#3a3d47"}`,
-                  borderRadius:6, color: val===n ? "#15171c" : "#666",
-                  fontFamily:"'JetBrains Mono',monospace", fontSize:15, fontWeight: val===n ? 700 : 400,
-                  padding:"6px 13px", cursor:"pointer", minWidth:38, textAlign:"center",
-                }}>{n}</button>
-              ))}
+          { label:"A", color:"#ff6b4a", val:beatsA, set:onBeatsA, met:metA, onChange:onChangeA },
+          { label:"B", color:"#4ad9ff", val:beatsB, set:onBeatsB, met:metB, onChange:onChangeB },
+        ].map(({ label, color, val, set, met, onChange }) => (
+          <div key={label} style={{ flex:1, minWidth:200, display:"flex", flexDirection:"column", gap:10 }}>
+            <NumberSelect label={label} value={val} values={PULSE_VALUES} onChange={set} accent={color} />
+            <div>
+              <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:6 }}>ACENTOS</div>
+              <AccentDots total={beatsPerMeasure(met.timeSig)} groups={met.accentGroups}
+                onChange={(g) => onChange({ accentGroups: g })} accent={color} />
             </div>
           </div>
         ))}
@@ -1142,8 +1193,8 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
-const DEFAULT_A = { bpm:120, baseBpm:120, timeSig:"4/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, subTick:-1, strongSound:"click", weakSound:"beep",  subdivision:1, accentGroups:null };
-const DEFAULT_B = { bpm:90,  baseBpm:90,  timeSig:"4/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, subTick:-1, strongSound:"click", weakSound:"wood",  subdivision:1, accentGroups:null };
+const DEFAULT_A = { bpm:120, baseBpm:120, timeSig:"4/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, subTick:-1, strongSound:"click", weakSound:"beep",  subdivision:1, accentGroups:null, subAccents:null };
+const DEFAULT_B = { bpm:90,  baseBpm:90,  timeSig:"4/4", volume:0.7, muted:false, beat:-1, lastBeat:-1, subTick:-1, strongSound:"click", weakSound:"wood",  subdivision:1, accentGroups:null, subAccents:null };
 
 // remember the last configuration between sessions — only stable settings
 // (bpm, sounds, mode params), never live playback state (beat/subTick/running)
@@ -1197,6 +1248,10 @@ export default function DualMetronome() {
   // (shown in the collapsed PRÁCTICA bar and as a corner countdown in lights mode)
   const [practiceStatus, setPracticeStatus] = useState({});
   const updatePracticeStatus = useCallback((patch) => setPracticeStatus((p) => ({ ...p, ...patch })), []);
+  // destello del número de BPM cuando la práctica progresiva sube el tempo
+  const [bpmFlash, setBpmFlash] = useState(false);
+  const bpmFlashRef = useRef(null);
+  useEffect(() => () => clearTimeout(bpmFlashRef.current), []);
 
   // audio refs — the scheduler reads exclusively from these, never from state
   const ctxRef     = useRef(null);
@@ -1219,17 +1274,19 @@ export default function DualMetronome() {
   const scheduleBeats = useCallback(() => {
     const ctx = ctxRef.current;
     if (!ctx || ctx.state === "closed") return;
-    const ahead = ctx.currentTime + 0.1;
+    const ahead = ctx.currentTime + LOOKAHEAD;
 
     const sched = (runRef, otherRef, metRef, nextRef, tickRef, setMeasures, setMet, fixedPan) => {
       if (!runRef.current) return;
       const sid = sessionRef.current; // snapshot — callbacks discard themselves if session changed
-      const { bpm, timeSig, volume, muted, strongSound, weakSound, subdivision, accentGroups } = metRef.current;
+      const { bpm, timeSig, volume, muted, strongSound, weakSound, subdivision, accentGroups, subAccents } = metRef.current;
       // center if the other metronome is muted or not running
       const otherSilent = !otherRef.current || otherRef.current.muted;
       const pan = otherSilent ? 0 : fixedPan;
       const total     = beatsPerMeasure(timeSig);
       const accentIdx = accentSet(effectiveGroups(accentGroups, total));
+      // agrupación interna del pulso: deja estudiar un 21 como 3+3+3+3+3+3+3
+      const subAccentIdx = accentSet(effectiveGroups(subAccents, subdivision));
       const subInt = (60 / bpm) / subdivision;
       while (nextRef.current < ahead) {
         const tick    = tickRef.current;
@@ -1237,11 +1294,17 @@ export default function DualMetronome() {
         const beatIdx = Math.floor(tick / subdivision) % total;
         const isMain  = subIdx === 0;
         const isAcc   = isMain && accentIdx.has(beatIdx);
+        const isSubAcc = !isMain && subAccentIdx.has(subIdx);
         const t       = nextRef.current;
+        // Cuatro niveles, no dos: el pulso acentuado abre compás, el pulso
+        // normal marca el tiempo, y las subdivisiones quedan por debajo — con
+        // las que abren grupo un escalón arriba del resto. Antes el pulso y su
+        // subdivisión sonaban idénticos y no se distinguía uno de otro.
         if (!muted) {
-          if (isAcc)       synthClick(ctx, t, strongSound, volume, pan);
-          else if (isMain) synthClick(ctx, t, weakSound,   volume, pan);
-          else             synthClick(ctx, t, weakSound,   volume, pan);
+          if (isAcc)         synthClick(ctx, t, strongSound, volume, pan);
+          else if (isMain)   synthClick(ctx, t, weakSound,   volume, pan);
+          else if (isSubAcc) synthClick(ctx, t, weakSound,   volume * SUB_ACCENT_LEVEL, pan);
+          else               synthClick(ctx, t, weakSound,   volume * SUB_LEVEL, pan);
         }
         if (isAcc) {
           const bar   = Math.floor(tick / (subdivision * total)) + 1;
@@ -1283,7 +1346,7 @@ export default function DualMetronome() {
     try {
       return new AudioContext();
     } catch {
-      setAudioError("No se pudo iniciar el audio en este navegador. Revisa los permisos de sonido o probá con otro navegador.");
+      setAudioError("No se pudo iniciar el audio en este navegador. Revisa los permisos de sonido o prueba con otro navegador.");
       return null;
     }
   };
@@ -1309,6 +1372,45 @@ export default function DualMetronome() {
     setMeasuresA(0); setMeasuresB(0);
     scheduleBeats(); schedRef.current = setInterval(scheduleBeats, 25);
   }, [scheduleBeats]);
+
+  // ── rescaleGrid ────────────────────────────────────────────────────────────
+  // Cambio de tempo SIN reinicio. En vez de rehacer la grilla desde cero,
+  // reescala lo que todavía no salió al audio.
+  //
+  // El scheduler avanza nextRef DESPUÉS de agendar cada tick, así que al salir
+  // del bucle nextRef apunta siempre al próximo tick no agendado. Por eso se lo
+  // puede mover sin pisar nada que ya esté sonando.
+  //
+  // Con T = ahora + LOOKAHEAD (más allá del horizonte ya agendado), todo lo que
+  // viene después se mapea con t -> T + (t - T) * r. Como T es el mismo para A
+  // y para B, y el intervalo se recalcula solo desde metRef.bpm en cada pasada,
+  // el resultado es un mapeo lineal del eje temporal: TODA coincidencia de la
+  // polirritmia se conserva exacta. Una voz cuyo BPM no cambió da r = 1 y queda
+  // intacta.
+  //
+  // Llamar DESPUÉS de escribir el bpm nuevo en metARef/metBRef, pasando los
+  // bpm viejos.
+  const rescaleGrid = useCallback((oldBpmA, oldBpmB) => {
+    const ctx = ctxRef.current;
+    if (!ctx || ctx.state === "closed") return;
+    if (!runARef.current && !runBRef.current) return;
+    const T = ctx.currentTime + LOOKAHEAD;
+    const newA = metARef.current.bpm, newB = metBRef.current.bpm;
+    if (runARef.current && oldBpmA > 0 && newA > 0)
+      nextARef.current = T + (nextARef.current - T) * (oldBpmA / newA);
+    if (runBRef.current && oldBpmB > 0 && newB > 0)
+      nextBRef.current = T + (nextBRef.current - T) * (oldBpmB / newB);
+  }, []);
+
+  // Aplica un cambio de tempo y nada más. Cualquier cambio de compás o de
+  // subdivisión NO puede pasar por aquí: ahí el factor deja de ser común a las
+  // dos voces y el reescalado dejaría de ser lineal. Eso va por restartNow().
+  const applyTempo = useCallback((bpmA, bpmB) => {
+    const oldA = metARef.current.bpm, oldB = metBRef.current.bpm;
+    if (bpmA != null) { metARef.current = { ...metARef.current, bpm: bpmA }; setMetA((p) => ({ ...p, bpm: bpmA })); }
+    if (bpmB != null) { metBRef.current = { ...metBRef.current, bpm: bpmB }; setMetB((p) => ({ ...p, bpm: bpmB })); }
+    rescaleGrid(oldA, oldB);
+  }, [rescaleGrid]);
 
   // ── engine ─────────────────────────────────────────────────────────────────
   const ensureCtx = () => {
@@ -1403,7 +1505,16 @@ export default function DualMetronome() {
   }, []);
 
   // ── polimetría param handlers ──────────────────────────────────────────────
-  // Update both refs and state, then restart so there is zero phase drift.
+  // Solo cambia el tempo: continuo, sin reinicio. A y B se escalan por el mismo
+  // factor, así que la relación A:B queda intacta.
+  const applyPoliTempo = useCallback((bpmBase) => {
+    applyTempo(
+      bpmBase * relMultRef.current,
+      derivedBpm(bpmBase, relBaseRef.current, relDerivRef.current, relMultRef.current),
+    );
+  }, [applyTempo]);
+
+  // Cambia el compás: en ese caso sí hay que rehacer la grilla desde cero.
   const applyPoliParams = useCallback((bpmBase, base, deriv) => {
     const eff  = bpmBase * relMultRef.current; // ×0.5 / ×1 / ×2
     const bpmB = derivedBpm(bpmBase, base, deriv, relMultRef.current);
@@ -1417,8 +1528,8 @@ export default function DualMetronome() {
 
   const handleRelBpmBase = useCallback((v) => {
     setRelBpmBase(v);
-    applyPoliParams(v, relBaseRef.current, relDerivRef.current);
-  }, [applyPoliParams]);
+    applyPoliTempo(v);
+  }, [applyPoliTempo]);
 
   // global tap tempo (top-left button, DUAL SINC mode) — feeds BPM Base
   const tapRefGlobal = useRef([]);
@@ -1458,10 +1569,13 @@ export default function DualMetronome() {
     restartNow();
   }, [restartNow]);
 
+  // Solo el tempo: continuo, sin reinicio. Los dos lados comparten BPM, así que
+  // se escalan por el mismo factor y el ciclo de coincidencia no se altera.
   const handlePolyBpm = useCallback((v) => {
-    setPolyBpm(v);
-    applyPolyParams(v, polyBeatsARef.current, polyBeatsBRef.current);
-  }, [applyPolyParams]);
+    setPolyBpm(v); polyBpmRef.current = v;
+    const eff = v * polyMultRef.current;
+    applyTempo(eff, eff);
+  }, [applyTempo]);
 
   const handlePolyBeatsA = useCallback((v) => {
     setPolyBeatsA(v); polyBeatsARef.current = v;
@@ -1474,19 +1588,28 @@ export default function DualMetronome() {
   }, [applyPolyParams]);
 
   // ── dual libre param handlers ──────────────────────────────────────────────
-  // Restart only for params that affect timing (bpm, timeSig, subdivision).
-  // Sound/volume/mute changes are picked up by the scheduler on the next tick.
+  // Tres caminos: compás o subdivisión reinician la grilla; el BPM se aplica de
+  // forma continua; sonido, volumen y acentos los toma el scheduler en la
+  // próxima pasada sin tocar nada.
   const changeMetA = useCallback((patch) => {
+    const structural = Object.keys(patch).some((k) => NEEDS_RESTART.has(k));
+    const oldBpm = metARef.current.bpm;
     metARef.current = { ...metARef.current, ...patch };
     setMetA((p) => ({ ...p, ...patch }));
-    if (runARef.current && Object.keys(patch).some((k) => NEEDS_RESTART.has(k))) restartNow();
-  }, [restartNow]);
+    if (!runARef.current) return;
+    if (structural) restartNow();
+    else if (patch.bpm != null) rescaleGrid(oldBpm, metBRef.current.bpm);
+  }, [restartNow, rescaleGrid]);
 
   const changeMetB = useCallback((patch) => {
+    const structural = Object.keys(patch).some((k) => NEEDS_RESTART.has(k));
+    const oldBpm = metBRef.current.bpm;
     metBRef.current = { ...metBRef.current, ...patch };
     setMetB((p) => ({ ...p, ...patch }));
-    if (runBRef.current && Object.keys(patch).some((k) => NEEDS_RESTART.has(k))) restartNow();
-  }, [restartNow]);
+    if (!runBRef.current) return;
+    if (structural) restartNow();
+    else if (patch.bpm != null) rescaleGrid(metARef.current.bpm, oldBpm);
+  }, [restartNow, rescaleGrid]);
 
   // ── mode switch ────────────────────────────────────────────────────────────
   const handleModeChange = useCallback((newMode) => {
@@ -1516,21 +1639,26 @@ export default function DualMetronome() {
   }, [hardStop, relBpmBase]);
 
   // ── progressive practice bpm handler ──────────────────────────────────────
+  // Cada incremento pasa por el camino continuo, en los tres modos: nunca se
+  // corta el audio ni se vuelve al pulso 1. Mueve A y B con el mismo factor,
+  // así que el anillo de coincidencia también sigue exacto.
   const handlePracticeBpm = useCallback((bpm) => {
     if (modeRef.current === "metrica") {
       setRelBpmBase(bpm);
-      applyPoliParams(bpm, relBaseRef.current, relDerivRef.current);
+      applyPoliTempo(bpm);
     } else if (modeRef.current === "polimetria") {
       setPolyBpm(bpm); polyBpmRef.current = bpm;
-      applyPolyParams(bpm, polyBeatsARef.current, polyBeatsBRef.current);
+      const eff = bpm * polyMultRef.current;
+      applyTempo(eff, eff);
     } else {
-      metARef.current = { ...metARef.current, bpm };
-      metBRef.current = { ...metBRef.current, bpm };
-      setMetA((p) => ({ ...p, bpm }));
-      setMetB((p) => ({ ...p, bpm }));
-      restartNow();
+      applyTempo(bpm, bpm);
     }
-  }, [applyPoliParams, applyPolyParams, restartNow]);
+    // Sin señal, el cambio es tan suave que no se distingue de haberse apurado
+    // uno mismo. El destello dice "fue el metrónomo".
+    setBpmFlash(true);
+    clearTimeout(bpmFlashRef.current);
+    bpmFlashRef.current = setTimeout(() => setBpmFlash(false), 260);
+  }, [applyPoliTempo, applyTempo]);
 
   // ── polimetría tap tempo ───────────────────────────────────────────────────
   const tapRefPoly = useRef([]);
@@ -1555,12 +1683,12 @@ export default function DualMetronome() {
   // every beat tick, only when the user actually changes a setting
   const settingsSnapshot = useMemo(() => ({
     mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB,
-    metA: { bpm:metA.bpm, baseBpm:metA.baseBpm, timeSig:metA.timeSig, subdivision:metA.subdivision, strongSound:metA.strongSound, weakSound:metA.weakSound, volume:metA.volume, muted:metA.muted, accentGroups:metA.accentGroups },
-    metB: { bpm:metB.bpm, baseBpm:metB.baseBpm, timeSig:metB.timeSig, subdivision:metB.subdivision, strongSound:metB.strongSound, weakSound:metB.weakSound, volume:metB.volume, muted:metB.muted, accentGroups:metB.accentGroups },
+    metA: { bpm:metA.bpm, baseBpm:metA.baseBpm, timeSig:metA.timeSig, subdivision:metA.subdivision, strongSound:metA.strongSound, weakSound:metA.weakSound, volume:metA.volume, muted:metA.muted, accentGroups:metA.accentGroups, subAccents:metA.subAccents },
+    metB: { bpm:metB.bpm, baseBpm:metB.baseBpm, timeSig:metB.timeSig, subdivision:metB.subdivision, strongSound:metB.strongSound, weakSound:metB.weakSound, volume:metB.volume, muted:metB.muted, accentGroups:metB.accentGroups, subAccents:metB.subAccents },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB,
-    metA.bpm, metA.baseBpm, metA.timeSig, metA.subdivision, metA.strongSound, metA.weakSound, metA.volume, metA.muted, metA.accentGroups,
-    metB.bpm, metB.baseBpm, metB.timeSig, metB.subdivision, metB.strongSound, metB.weakSound, metB.volume, metB.muted, metB.accentGroups]);
+    metA.bpm, metA.baseBpm, metA.timeSig, metA.subdivision, metA.strongSound, metA.weakSound, metA.volume, metA.muted, metA.accentGroups, metA.subAccents,
+    metB.bpm, metB.baseBpm, metB.timeSig, metB.subdivision, metB.strongSound, metB.weakSound, metB.volume, metB.muted, metB.accentGroups, metB.subAccents]);
   useEffect(() => {
     saveSettings(settingsSnapshot); // best-effort — private mode or quota just skips
   }, [settingsSnapshot]);
@@ -1683,16 +1811,20 @@ export default function DualMetronome() {
           <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
             <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={false} vizStyle={vizStyle} />
           </div>
+          <div style={{ maxWidth:680, margin:"0 auto 20px" }}>
+            <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} onFinish={hardStop} status={practiceStatus} onStatus={updatePracticeStatus} />
+          </div>
           <div style={{ marginBottom:20 }}>
             <PoliPanel
               bpmBase={relBpmBase} base={relBase} derivado={relDeriv}
               onBpmBase={handleRelBpmBase} onBase={handleRelBase} onDeriv={handleRelDeriv}
               onTap={handleGlobalTap}
+              metA={metA} metB={metB} onChangeA={changeMetA} onChangeB={changeMetB}
+              bpmFlash={bpmFlash}
             />
           </div>
-          <SyncControls metA={metA} metB={metB} onChangeA={changeMetA} onChangeB={changeMetB} />
-          <div style={{ maxWidth:680, margin:"0 auto 90px" }}>
-            <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} onFinish={hardStop} status={practiceStatus} onStatus={updatePracticeStatus} />
+          <div style={{ marginBottom:90 }}>
+            <SyncControls metA={metA} metB={metB} onChangeA={changeMetA} onChangeB={changeMetB} />
           </div>
         </>
       )}
@@ -1705,17 +1837,21 @@ export default function DualMetronome() {
               showCycleRing cycleTargetA={polyTarget} cycleTargetB={polyTarget}
               cyclePulseA={pulseCountA} cyclePulseB={pulseCountA} />
           </div>
+          <div style={{ maxWidth:680, margin:"0 auto 20px" }}>
+            <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} onFinish={hardStop} status={practiceStatus} onStatus={updatePracticeStatus} />
+          </div>
           <div style={{ marginBottom:20 }}>
             <PolyMetriaPanel
               bpm={polyBpm} beatsA={polyBeatsA} beatsB={polyBeatsB}
               onBpm={handlePolyBpm} onBeatsA={handlePolyBeatsA} onBeatsB={handlePolyBeatsB}
               onTap={handlePolyTap}
               pulseCount={pulseCountA} running={runningA || runningB}
+              metA={metA} metB={metB} onChangeA={changeMetA} onChangeB={changeMetB}
+              bpmFlash={bpmFlash}
             />
           </div>
-          <SyncControls metA={metA} metB={metB} onChangeA={changeMetA} onChangeB={changeMetB} />
-          <div style={{ maxWidth:680, margin:"0 auto 90px" }}>
-            <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} onFinish={hardStop} status={practiceStatus} onStatus={updatePracticeStatus} />
+          <div style={{ marginBottom:90 }}>
+            <SyncControls metA={metA} metB={metB} onChangeA={changeMetA} onChangeB={changeMetB} />
           </div>
         </>
       )}
@@ -1733,12 +1869,12 @@ export default function DualMetronome() {
               cyclePulseA={pulseCountA} cyclePulseB={pulseCountB} />
           </div>
           <PhaseSyncInfo bpmA={metA.bpm} bpmB={metB.bpm} pulseCountA={pulseCountA} running={dualOn} />
-          <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", maxWidth:880, margin:"0 auto" }}>
-            <MetronomePanel color="A" state={metA} onChange={changeMetA} running={runningA} onToggle={toggleA} measures={measuresA} />
-            <MetronomePanel color="B" state={metB} onChange={changeMetB} running={runningB} onToggle={toggleB} measures={measuresB} />
-          </div>
-          <div style={{ maxWidth:880, margin:"22px auto 90px" }}>
+          <div style={{ maxWidth:880, margin:"0 auto 20px" }}>
             <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} onFinish={hardStop} status={practiceStatus} onStatus={updatePracticeStatus} />
+          </div>
+          <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", maxWidth:880, margin:"0 auto 90px" }}>
+            <MetronomePanel color="A" state={metA} onChange={changeMetA} running={runningA} onToggle={toggleA} measures={measuresA} bpmFlash={bpmFlash} />
+            <MetronomePanel color="B" state={metB} onChange={changeMetB} running={runningB} onToggle={toggleB} measures={measuresB} bpmFlash={bpmFlash} />
           </div>
         </>
       )}
