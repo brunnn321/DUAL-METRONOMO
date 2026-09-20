@@ -6,6 +6,8 @@ import { loadSettings, saveSettings } from "./settings.js";
 // secuencia de compases (pestaña SECUENCIA de PRÁCTICA) — cálculo puro, testeable
 import { pulseAt, sequenceLabel, normalizeSequence, normalizeStep, normalizePresets, savePreset, deletePreset, DEFAULT_SEQUENCE, DEN_VALUES, MAX_NUM } from "./sequence.js";
 import { exportForState, downloadMidi } from "./midiExport.js";
+// geometría del visualizador de árbol — cálculo puro, testeable
+import { treeLayout, activePath, leafRadius } from "./tree.js";
 
 // ─── constants ────────────────────────────────────────────────────────────────
 const beatsPerMeasure = (sig) => parseInt(sig.split("/")[0]);
@@ -296,6 +298,16 @@ function CircularVisualizer({
 
   const label = centerLabel ?? `${totalA}:${totalB}`;
 
+  // El árbol es otro dibujo de lo mismo, no otro sitio de montaje: se devuelve
+  // desde acá para que los tres modos y la pantalla completa lo hereden sin
+  // repetir la elección cinco veces. Va después de todos los hooks de arriba,
+  // que por eso no se pueden mover debajo de este return.
+  if (vizStyle === "tree") {
+    return (
+      <TreeVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} fullscreen={fullscreen} />
+    );
+  }
+
   return (
     <div style={{
       display:"flex", flexDirection:"column", alignItems:"center", gap:10,
@@ -391,6 +403,94 @@ function CircularVisualizer({
         </div>
       )}
     </div>
+  );
+}
+
+// ─── visualizador de árbol ────────────────────────────────────────────────────
+// La métrica dibujada como un árbol: la raíz es el compás entero, el nivel del
+// medio son los grupos de la agrupación aditiva, y las hojas son los pulsos.
+//
+// A crece hacia arriba y B hacia abajo, las dos apoyadas sobre una misma barra
+// de tiempo. Eso es lo que hace visible el cruce: los 7 pulsos de A y los 5 de
+// B caen sobre la misma barra, y se ve dónde coinciden y dónde no. Con la
+// secuencia encendida el compás cambia paso a paso y el árbol lo sigue solo,
+// porque lee timeSig y accentGroups, que el scheduler ya mantiene al día.
+function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen }) {
+  const S = 680, H = 470;
+  const X0 = 60, X1 = 620, BAR = 235;
+  const CA = "#ff6b4a", CB = "#4ad9ff", HOT = "#4aff9a";
+
+  const voz = (met, running, arriba) => {
+    const total  = Math.max(1, beatsPerMeasure(met.timeSig));
+    const layout = treeLayout(total, met.accentGroups, { x0: X0, x1: X1 });
+    const r      = leafRadius(total, X0, X1);
+    const color  = arriba ? CA : CB;
+    const dir    = arriba ? -1 : 1;                  // hacia dónde crece
+    const yHoja  = BAR + dir * 12;
+    const yGrupo = BAR + dir * 105;
+    const yRaiz  = BAR + dir * 175;
+    const path   = running ? activePath(layout, met.beat) : null;
+
+    return (
+      <g>
+        {layout.groups.map((g, i) => (
+          <line key={`gr${i}`} x1={layout.rootX} y1={yRaiz + dir * 18} x2={g.x} y2={yGrupo - dir * 14}
+            stroke={color} strokeWidth={1.5} opacity={0.5} />
+        ))}
+        {layout.groups.map((g, i) =>
+          layout.leaves.slice(g.from, g.to + 1).map((h) => (
+            <line key={`hj${i}-${h.i}`} x1={g.x} y1={yGrupo + dir * 14} x2={h.x} y2={yHoja}
+              stroke={color} strokeWidth={1.5} opacity={0.5} />
+          ))
+        )}
+
+        {path && (
+          <>
+            <path d={`M ${path.rootX} ${yRaiz + dir * 18} L ${path.groupX} ${yGrupo - dir * 14}`}
+              fill="none" stroke={HOT} strokeWidth={3.5} strokeLinecap="round"
+              style={{ filter:`drop-shadow(0 0 5px ${HOT})` }} />
+            <path d={`M ${path.groupX} ${yGrupo + dir * 14} L ${path.leafX} ${yHoja}`}
+              fill="none" stroke={HOT} strokeWidth={3.5} strokeLinecap="round"
+              style={{ filter:`drop-shadow(0 0 5px ${HOT})` }} />
+          </>
+        )}
+
+        {layout.leaves.map((h) => {
+          const on = running && met.beat === h.i;
+          const abre = layout.groups.some((g) => g.from === h.i);
+          return (
+            <circle key={h.i} cx={h.x} cy={yHoja} r={on ? r + 3 : r}
+              fill={on ? HOT : abre ? color : `${color}88`}
+              stroke={on ? "#fff" : "none"} strokeWidth={on ? 2 : 0}
+              style={{ filter: on ? `drop-shadow(0 0 12px ${HOT})` : "none" }} />
+          );
+        })}
+
+        {layout.groups.map((g, i) => {
+          const on = path?.groupIdx === i;
+          return (
+            <g key={`n${i}`}>
+              <circle cx={g.x} cy={yGrupo} r={14} fill={on ? HOT : "#1e2028"} stroke={on ? HOT : color} strokeWidth={2} />
+              <text x={g.x} y={yGrupo + 4} textAnchor="middle" fontFamily="'JetBrains Mono',monospace"
+                fontSize={12} fontWeight={700} fill={on ? "#15171c" : color}>{g.size}</text>
+            </g>
+          );
+        })}
+
+        <circle cx={layout.rootX} cy={yRaiz} r={18} fill="#1e2028" stroke={color} strokeWidth={2.5} />
+        <text x={layout.rootX} y={yRaiz + 5} textAnchor="middle" fontFamily="'JetBrains Mono',monospace"
+          fontSize={14} fontWeight={800} fill={color}>{met.timeSig}</text>
+      </g>
+    );
+  };
+
+  return (
+    <svg width={fullscreen ? "92vmin" : "100%"} height={fullscreen ? "82vmin" : undefined}
+      viewBox={`0 0 ${S} ${H}`} style={{ maxWidth:S, overflow:"visible" }}>
+      <line x1={X0} y1={BAR} x2={X1} y2={BAR} stroke="#7c3aed" strokeWidth={8} strokeLinecap="round" opacity={0.85} />
+      {voz(metA, runningA, true)}
+      {voz(metB, runningB, false)}
+    </svg>
   );
 }
 
@@ -1979,16 +2079,26 @@ export default function DualMetronome() {
       )}
       <FlashToggle on={flashOn} onToggle={() => setFlashOn((v) => { const n = !v; if (n) setCircleFullscreen(false); return n; })} />
       <CircleFullscreenToggle on={circleFullscreen} onToggle={() => setCircleFullscreen((v) => { const n = !v; if (n) setFlashOn(false); return n; })} />
-      <button onClick={() => setVizStyle((v) => (v === "rings" ? "necklace" : "rings"))} title="Cambiar estilo de visualizador" style={{
+      <button onClick={() => setVizStyle((v) => (v === "rings" ? "necklace" : v === "necklace" ? "tree" : "rings"))} title="Cambiar estilo de visualizador" style={{
         position:"fixed", top:16, left:16, zIndex:1000,
         width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center",
         background:"#ffd04a1a", border:"1px solid #ffd04a", borderRadius:10,
         color:"#ffd04a", cursor:"pointer",
         boxShadow:"0 0 12px #ffd04a44",
       }}>
-        {vizStyle === "rings"
-          ? <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" /></svg>
-          : <svg width="16" height="16" viewBox="0 0 16 16"><polygon points="8,1 15,6 12,15 4,15 1,6" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>}
+        {vizStyle === "rings" ? (
+          <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" /></svg>
+        ) : vizStyle === "necklace" ? (
+          <svg width="16" height="16" viewBox="0 0 16 16"><polygon points="8,1 15,6 12,15 4,15 1,6" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
+        ) : (
+          // Yggdrasil: copa arriba, raíces abajo, tronco cruzando el medio
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <path d="M8 1v14" />
+            <path d="M8 4.5 4.5 7M8 4.5 11.5 7" />
+            <path d="M8 11.5 4.5 9M8 11.5 11.5 9" />
+            <path d="M4.5 7 2.5 9M4.5 7 6 9.2M11.5 7 13.5 9M11.5 7 10 9.2" />
+          </svg>
+        )}
       </button>
       <button onClick={handleExport} title="Exportar este patrón a un archivo MIDI" style={{
         position:"fixed", top:16, left:64, zIndex:1000,
