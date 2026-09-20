@@ -48,7 +48,7 @@ frente a la web es que funciona sin conexión y queda como programa propio.
 ```bash
 npm install
 npm run dev              # servidor de desarrollo
-npm test                 # 150 tests (vitest)
+npm test                 # 164 tests (vitest)
 npm run electron:preview # la app de escritorio, sin empaquetar
 npm run electron:build   # genera el instalador en release/
 ```
@@ -61,6 +61,7 @@ src/
   phase.js            Matemática pura de fase y ciclos (MCM, razones, acentos, euclídeo)
   sequence.js         Secuencia de compases: pasos, ciclo, qué toca en el pulso N, presets
   tree.js             Geometría del visualizador de árbol: hojas, grupos, camino activo
+  motion.js           Fichas de duración y easing, y el búfer que sincroniza dibujo y audio
   midiExport.js       Escritura de Standard MIDI Files formato 1
   settings.js         Persistencia en localStorage
 electron/
@@ -70,7 +71,11 @@ build/
 ```
 
 La lógica que se puede probar sin navegador vive en `phase.js`, `sequence.js`, `tree.js`,
-`midiExport.js` y `settings.js`, cada uno con su archivo de tests al lado.
+`motion.js`, `midiExport.js` y `settings.js`, cada uno con su archivo de tests al lado.
+
+El visualizador dibuja leyendo `ctx.currentTime`, el mismo reloj con el que suena el
+metrónomo, y escribe directo en el SVG por `ref`. No hay un re-render de React por pulso,
+y la imagen no se puede despegar del audio porque no hay dos relojes.
 
 ## Detalles técnicos
 

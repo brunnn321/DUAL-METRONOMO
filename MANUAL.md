@@ -260,6 +260,8 @@ El visualizador central se puede alternar entre tres estilos con el botón de ar
 - **Collar** (*necklace*, por defecto) — un polígono regular de N vértices por metrónomo, con el vértice del "1" marcado. Es la forma estándar de representar ritmos geométricamente en el análisis rítmico comparado (la *necklace notation* de Godfried Toussaint).
 - **Árbol** — la métrica dibujada como un árbol: la raíz es el compás entero, el nivel del medio son los grupos de la agrupación aditiva, y las hojas son los pulsos. A crece hacia arriba y B hacia abajo, las dos apoyadas sobre una misma barra de tiempo, así que se ve dónde coinciden los pulsos de las dos voces y dónde no. Un camino verde marca, en cada voz, la rama que está sonando. Con la secuencia encendida el árbol sigue solo el compás de cada paso.
 
+En DUAL TEMPO, la cuenta de **COINCIDENCIA** —cuántos pulsos faltan para que A y B vuelvan a caer juntas— es un panel plegable que está **abajo, con el resto de los controles**. Plegado ya muestra el número; abrirlo explica cada cuánto se reencuentran los dos tempos.
+
 En DUAL TEMPO y DUAL POLY aparece además el **aro de sincronización de fase**: un arco ámbar externo que muestra la fracción del ciclo de re-alineación ya recorrida, con destello blanco en el instante exacto de la sincronía.
 
 Otros controles del visualizador:

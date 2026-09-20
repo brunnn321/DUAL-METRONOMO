@@ -449,7 +449,7 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
   // pulso, y nunca llegaría a dibujar. El plan viaja por un ref que se refresca
   // en cada render, y el bucle vive mientras haya algo sonando.
   const planRef = useRef({ pa, pb });
-  planRef.current = { pa, pb };
+  useEffect(() => { planRef.current = { pa, pb }; });
 
   // ── el bucle de dibujo ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -997,18 +997,38 @@ function ProgressivePractice({ onBpmChange, onActivate, running, onStatus }) {
 // ─── phase-sync info (DUAL LIBRE) ─────────────────────────────────────────────
 // Two independent integer BPMs starting together realign exactly every
 // 60/gcd(bpmA,bpmB) seconds. Shows that estimate and an opt-in auto-stop.
+// Plegable como los demás paneles, y abajo con ellos. Antes ocupaba una franja
+// entera justo entre el visualizador y los controles, que es el peor sitio:
+// empujaba todo hacia abajo para mostrar un solo número.
 function PhaseSyncInfo({ bpmA, bpmB, pulseCountA, running }) {
+  const [open, setOpen] = useState(false);
   const { targetA, seconds } = libreCycleTargets(bpmA, bpmB);
   const fmt = (s) => s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s/60)}m ${Math.round(s%60)}s`;
   const same = Math.round(bpmA) === Math.round(bpmB);
-  // live countdown, ticks down exactly once per real pulse of A — never a
-  // wall-clock timer, so it always matches what's actually sounding
+  // la cuenta baja un paso por pulso real de A, nunca por un reloj de pared, así
+  // que siempre coincide con lo que está sonando
   const remaining = cycleRemaining(pulseCountA, targetA);
+  const valor = same ? "—" : running ? `${remaining} pulsos` : fmt(seconds);
 
   return (
-    <div style={{ maxWidth:880, margin:"0 auto 18px", background:"#1e2028", borderRadius:12, border:"1px solid #252830", padding:"12px 18px", display:"flex", alignItems:"center", gap:14 }}>
-      <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:20, fontWeight:700, color: same ? "#444" : "#ffd04a" }}>
-        {same ? "—" : running ? remaining : fmt(seconds)}
+    <div style={{ background:"#1e2028", borderRadius:12, border:"1px solid #252830" }}>
+      <button onClick={() => setOpen((o) => !o)} style={{
+        width:"100%", background:"none", border:"none", cursor:"pointer",
+        display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 20px", gap:10,
+      }}>
+        <span style={{ color:"#555", fontSize:10, fontFamily:"monospace", letterSpacing:2 }}>COINCIDENCIA</span>
+        <span style={{ display:"flex", alignItems:"center", gap:12 }}>
+          {/* plegado ya muestra el número: abrirlo es opcional */}
+          <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:700, color: same ? "#444" : "#ffd04a" }}>
+            {valor}
+          </span>
+          <ChevronRight size={14} color="#555" style={{ transform: open ? "rotate(90deg)" : "none", transition:`transform ${DUR.fast}ms ${EASE.entra}` }} />
+        </span>
+      </button>
+      <div style={{ display: open ? "block" : "none", padding:"0 20px 16px", color:"#666", fontFamily:"monospace", fontSize:11, lineHeight:1.6 }}>
+        {same
+          ? "Los dos metrónomos van al mismo BPM, así que nunca se separan."
+          : <>Con {Math.round(bpmA)} contra {Math.round(bpmB)} BPM, las dos voces vuelven a caer juntas cada <span style={{ color:"#ffd04a", fontWeight:700 }}>{fmt(seconds)}</span> — {targetA} pulsos de A.</>}
       </div>
     </div>
   );
@@ -2428,14 +2448,16 @@ export default function DualMetronome() {
               showCycleRing cycleTargetA={libreCycleTargetA} cycleTargetB={libreCycleTargetB}
               cyclePulseA={pulseCountA} cyclePulseB={pulseCountB} />
           </div>
-          <PhaseSyncInfo bpmA={metA.bpm} bpmB={metB.bpm} pulseCountA={pulseCountA} running={dualOn} />
           <div style={{ maxWidth:880, margin:"0 auto 20px" }}>
             <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} status={practiceStatus} onStatus={updatePracticeStatus}
               seq={seqProps} countIn={countIn} onCountIn={setCountIn} presets={seqPresets} onSavePreset={handleSavePreset} onDeletePreset={handleDeletePreset} />
           </div>
-          <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", maxWidth:880, margin:"0 auto 90px" }}>
+          <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", maxWidth:880, margin:"0 auto 20px" }}>
             <MetronomePanel color="A" state={metA} onChange={changeMetA} running={runningA} onToggle={toggleA} measures={measuresA} bpmFlash={bpmFlash} accentView={seqAccentA} />
             <MetronomePanel color="B" state={metB} onChange={changeMetB} running={runningB} onToggle={toggleB} measures={measuresB} bpmFlash={bpmFlash} accentView={seqAccentB} />
+          </div>
+          <div style={{ maxWidth:880, margin:"0 auto 90px" }}>
+            <PhaseSyncInfo bpmA={metA.bpm} bpmB={metB.bpm} pulseCountA={pulseCountA} running={dualOn} />
           </div>
         </>
       )}
