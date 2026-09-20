@@ -104,6 +104,15 @@ export function groupsFromIndices(indices, total) {
   return groups;
 }
 
+// Saved accentGroups only apply while they still sum to the current beat
+// total — a timeSig change (base/derivado, tiempos) self-heals back to flat
+// instead of leaving a stale pattern that no longer fits the cycle.
+// Lives here, next to accentSet, so both the scheduler and the .mid export
+// read the grouping the same way instead of each having its own idea.
+export function effectiveGroups(groups, total) {
+  return Array.isArray(groups) && groups.reduce((a, b) => a + b, 0) === total ? groups : [total];
+}
+
 // DUAL SINC: both metronomes span the same cycle, so B's tempo follows from
 // how many pulses each side fits into it. `mult` is the ½ / ×1 / ×2 switch.
 export function derivedBpm(bpmBase, base, deriv, mult = 1) {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   frac, pickPpq, gcd, lcm, buildMidiFile, specForState, exportForState,
-  NOTE_A, NOTE_B, VEL_ACCENT, VEL_NORMAL, MAX_PPQ,
+  NOTE_A, NOTE_B, VEL_ACCENT, VEL_SUB, VEL_NORMAL, MAX_PPQ,
 } from "./midiExport.js";
 
 // ── parser SMF independiente del generador ───────────────────────────────────
@@ -241,5 +241,100 @@ describe("DUAL LIBRE", () => {
       expect(Number.isInteger(pasoB[0])).toBe(true);
       expect(pasoB[0] * b).toBe(a * m.ppq);
     }
+  });
+});
+
+describe("acentos aditivos en el archivo exportado", () => {
+  // En una métrica aditiva el acento ES el compás: un 8 sin acentos internos es
+  // indistinguible de un 4/4. Antes el .mid describía cada pista con un solo
+  // número ("acento cada 8") y un 3+3+2 salía plano.
+  const velsPorCiclo = (notes, ciclo) => notes.slice(0, ciclo).map((n) => n.vel);
+
+  it("DUAL SINC exporta un 8 agrupado 3+3+2 con acento en el 1, el 4 y el 7", () => {
+    const spec = specForState({
+      mode: "metrica", relBase: 8, relDeriv: 3, relBpmBase: 90,
+      metA: { accentGroups: [3, 3, 2] },
+    });
+    const m = parseMidi(buildMidiFile(spec));
+    const A = m.tracks[1].notes;
+    expect(velsPorCiclo(A, 8)).toEqual([
+      VEL_ACCENT, VEL_NORMAL, VEL_NORMAL,
+      VEL_SUB,    VEL_NORMAL, VEL_NORMAL,
+      VEL_SUB,    VEL_NORMAL,
+    ]);
+    // y el patrón se repite en cada ciclo, no sólo en el primero
+    A.forEach((n, i) => {
+      const k = i % 8;
+      expect(n.vel).toBe(k === 0 ? VEL_ACCENT : (k === 3 || k === 6) ? VEL_SUB : VEL_NORMAL);
+    });
+  });
+
+  it("DUAL SINC agrupa el lado derivado por su cuenta — un 7 en 2+2+3", () => {
+    const spec = specForState({
+      mode: "metrica", relBase: 4, relDeriv: 7, relBpmBase: 90,
+      metB: { accentGroups: [2, 2, 3] },
+    });
+    const m = parseMidi(buildMidiFile(spec));
+    m.tracks[2].notes.forEach((n, i) => {
+      const k = i % 7;
+      expect(n.vel).toBe(k === 0 ? VEL_ACCENT : (k === 2 || k === 4) ? VEL_SUB : VEL_NORMAL);
+    });
+    // A no se agrupó, así que sigue plano
+    m.tracks[1].notes.forEach((n, i) => {
+      expect(n.vel).toBe(i % 4 === 0 ? VEL_ACCENT : VEL_NORMAL);
+    });
+  });
+
+  it("POLIMETRÍA respeta la agrupación de cada lado", () => {
+    const spec = specForState({
+      mode: "polimetria", polyBpm: 90, polyBeatsA: 8, polyBeatsB: 5,
+      metA: { accentGroups: [3, 3, 2] },
+      metB: { accentGroups: [3, 2] },
+    });
+    const m = parseMidi(buildMidiFile(spec));
+    expect(velsPorCiclo(m.tracks[1].notes, 8)).toEqual([
+      VEL_ACCENT, VEL_NORMAL, VEL_NORMAL,
+      VEL_SUB,    VEL_NORMAL, VEL_NORMAL,
+      VEL_SUB,    VEL_NORMAL,
+    ]);
+    expect(velsPorCiclo(m.tracks[2].notes, 5)).toEqual([
+      VEL_ACCENT, VEL_NORMAL, VEL_NORMAL, VEL_SUB, VEL_NORMAL,
+    ]);
+  });
+
+  it("DUAL LIBRE exporta los sub-acentos de la subdivisión", () => {
+    const spec = specForState({
+      mode: "libre",
+      metA: { bpm: 120, subdivision: 8, subAccents: [3, 3, 2] },
+      metB: { bpm: 120, subdivision: 1 },
+    });
+    const m = parseMidi(buildMidiFile(spec));
+    expect(velsPorCiclo(m.tracks[1].notes, 8)).toEqual([
+      VEL_ACCENT, VEL_NORMAL, VEL_NORMAL,
+      VEL_SUB,    VEL_NORMAL, VEL_NORMAL,
+      VEL_SUB,    VEL_NORMAL,
+    ]);
+  });
+
+  it("una agrupación que no suma el total se ignora y el ciclo queda plano", () => {
+    // mismo criterio que el scheduler: los grupos guardados sólo valen mientras
+    // sumen los pulsos del compás actual (effectiveGroups en phase.js)
+    const spec = specForState({
+      mode: "metrica", relBase: 4, relDeriv: 3, relBpmBase: 90,
+      metA: { accentGroups: [3, 3, 2] },  // suma 8, pero el compás tiene 4
+    });
+    const m = parseMidi(buildMidiFile(spec));
+    m.tracks[1].notes.forEach((n, i) => {
+      expect(n.vel).toBe(i % 4 === 0 ? VEL_ACCENT : VEL_NORMAL);
+    });
+  });
+
+  it("el nombre de la pista muestra la agrupación, para verla en el DAW", () => {
+    const spec = specForState({
+      mode: "metrica", relBase: 8, relDeriv: 3, relBpmBase: 90,
+      metA: { accentGroups: [3, 3, 2] },
+    });
+    expect(spec.tracks[0].name).toContain("3+3+2");
+    expect(spec.tracks[1].name).not.toContain("+");
   });
 });

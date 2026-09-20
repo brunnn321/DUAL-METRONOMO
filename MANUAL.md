@@ -193,7 +193,8 @@ El botón de **flecha hacia abajo** (arriba a la izquierda) baja un archivo `.mi
 - El archivo sale con el **tempo que tengas puesto en la app**. Si armas un 4 contra 3 a 90 BPM, el archivo viene a 90 BPM.
 - Trae **dos pistas separadas**, una para A y otra para B, en canales distintos, para que les pongas sonidos diferentes.
 - **A usa la nota 36 (Do) y B la nota 48 (Do una octava más arriba).** Están a una octava exacta para que se distingan fácil.
-- El **primer pulso de cada ciclo suena más fuerte** (velocity 110 contra 80), así se ve y se escucha dónde empieza cada vuelta.
+- Los acentos salen en **tres niveles de volumen** (velocity): el primer pulso de cada ciclo con 110, los arranques de grupo de una métrica aditiva con 95, y el resto de los pulsos con 80. Si agrupaste un 8 en 3+3+2, el archivo trae acentuados el 1, el 4 y el 7 — no solo el 1.
+- El nombre de cada pista dice la agrupación, para verla en el programa sin tener que contar: `A - 8 pulsos 3+3+2 (nota 36)`.
 - El nombre del archivo dice qué es: `dualpulse-7-4-80bpm.mid` es un 7 contra 4 a 80 BPM.
 
 **Por qué esto es exacto y tocar en vivo no lo era.** Un archivo `.mid` no guarda tiempos reales, guarda posiciones sobre la grilla del programa. Por eso cae perfecto, sin desfase ni variación. La app elige la resolución del archivo según los números de tu patrón: para un 4 contra 7, por ejemplo, usa una resolución divisible por 7 para que ningún pulso tenga que redondearse. Con la resolución típica de 960 que usan muchos programas, un 4 contra 7 caería en 548,57 posiciones y habría error.

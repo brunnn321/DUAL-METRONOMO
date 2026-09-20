@@ -9,11 +9,17 @@
 // pulso y hay redondeo. `pickPpq` calcula el mínimo común múltiplo de los
 // denominadores que hagan falta y elige un PPQ múltiplo de eso.
 
+import { accentSet, effectiveGroups } from './phase.js';
+
 export const MAX_PPQ    = 32767; // límite del campo "division" en la cabecera SMF
 export const TARGET_PPQ = 1920;  // resolución a la que se apunta si los divisores lo permiten
 export const NOTE_A     = 36;    // C2
 export const NOTE_B     = 48;    // C3 — una octava arriba de A
+// Tres niveles, los mismos que distingue el scheduler: el 1 del ciclo, los
+// arranques de grupo de una métrica aditiva (3+3+2 acentúa también el 4 y el 7)
+// y el resto de los pulsos.
 export const VEL_ACCENT = 110;
+export const VEL_SUB    = 95;
 export const VEL_NORMAL = 80;
 
 export const gcd = (a, b) => (b === 0 ? Math.abs(a) : gcd(b, a % b));
@@ -77,7 +83,10 @@ function buildTrack(events, name) {
  * @param {number}   o.ppq         ticks por negra (ver pickPpq)
  * @param {number}   o.timeSigNum  numerador del compás (denominador siempre 4)
  * @param {number}   o.totalTicks  largo total del archivo
- * @param {Array}    o.tracks      [{ name, channel, note, stepTicks, count, accentEvery }]
+ * @param {Array}    o.tracks      [{ name, channel, note, stepTicks, count, accents, cycleLen }]
+ *   `accents` es el conjunto de índices acentuados dentro del ciclo y `cycleLen`
+ *   el largo del ciclo. Un número suelto no alcanza: una métrica aditiva acentúa
+ *   {0,3,6} sobre 8, no "cada 8".
  * @returns {Uint8Array}
  */
 export function buildMidiFile({ bpm, ppq, timeSigNum = 4, totalTicks, tracks }) {
@@ -97,9 +106,12 @@ export function buildMidiFile({ bpm, ppq, timeSigNum = 4, totalTicks, tracks }) 
   const chunks = [chunk('MTrk', tempoTrack)];
   for (const t of tracks) {
     const ev = [];
+    const cycleLen = Math.max(1, Math.round(t.cycleLen || 1));
+    const accents = t.accents instanceof Set ? t.accents : new Set([0]);
     for (let i = 0; i < t.count; i++) {
       const tick = Math.round(i * t.stepTicks);
-      const vel = (t.accentEvery > 0 && i % t.accentEvery === 0) ? VEL_ACCENT : VEL_NORMAL;
+      const k = i % cycleLen;
+      const vel = k === 0 ? VEL_ACCENT : accents.has(k) ? VEL_SUB : VEL_NORMAL;
       ev.push({ tick,           order: 1, data: [0x90 | t.channel, t.note, vel] });
       ev.push({ tick: tick + noteLen, order: 0, data: [0x80 | t.channel, t.note, 0] });
     }
@@ -114,12 +126,23 @@ export function buildMidiFile({ bpm, ppq, timeSigNum = 4, totalTicks, tracks }) 
 
 const MAX_QUARTERS = 256; // techo de largo, para no generar archivos enormes
 
+// Acentos de una voz, leídos igual que en el scheduler: los grupos guardados
+// solo valen mientras sumen el total del ciclo, y si no, el ciclo es plano.
+const accentsFor = (groups, total) => accentSet(effectiveGroups(groups, total));
+// "3+3+2" en el nombre de la pista, para que la agrupación se vea en el DAW.
+const groupLabel = (groups, total) => {
+  const g = effectiveGroups(groups, total);
+  return g.length > 1 ? ` ${g.join('+')}` : '';
+};
+
 /**
  * Arma el archivo que corresponde a lo que la app está configurada para tocar.
  * `state` viene del componente:
  *   modo "metrica":    { mode, relBase, relDeriv, relBpmBase }
  *   modo "polimetria": { mode, polyBpm, polyBeatsA, polyBeatsB }
  *   modo "libre":      { mode, metA:{bpm,subdivision}, metB:{bpm,subdivision} }
+ * En los tres, `metA`/`metB` aportan además la agrupación de acentos:
+ * `accentGroups` sobre los pulsos del compás y `subAccents` sobre la subdivisión.
  * @returns {{ bytes: Uint8Array, fileName: string, exact: boolean }}
  */
 export function exportForState(state) {
@@ -136,7 +159,7 @@ export function specForState(state) {
 
 // DUAL SINC: A y B abarcan el mismo ciclo. A pone `base` pulsos, B pone `deriv`.
 // El ciclo dura `base` negras al tempo base, así que el paso de B es base/deriv negras.
-function specMetrica({ relBase, relDeriv, relBpmBase }) {
+function specMetrica({ relBase, relDeriv, relBpmBase, metA = {}, metB = {} }) {
   const base = Math.max(1, Math.round(relBase));
   const deriv = Math.max(1, Math.round(relDeriv));
   const bpm = relBpmBase;
@@ -148,10 +171,14 @@ function specMetrica({ relBase, relDeriv, relBpmBase }) {
     bpm, ppq, timeSigNum: base, totalTicks, exact,
     fileName: `dualpulse-${deriv}-${relBase}-${bpm}bpm.mid`,
     tracks: [
-      { name: `A - ${base} pulsos (nota ${NOTE_A})`, channel: 0, note: NOTE_A,
-        stepTicks: ppq, count: base * cycles, accentEvery: base },
-      { name: `B - ${deriv} pulsos (nota ${NOTE_B})`, channel: 1, note: NOTE_B,
-        stepTicks: (ppq * stepB.n) / stepB.d, count: deriv * cycles, accentEvery: deriv },
+      { name: `A - ${base} pulsos${groupLabel(metA.accentGroups, base)} (nota ${NOTE_A})`,
+        channel: 0, note: NOTE_A,
+        stepTicks: ppq, count: base * cycles,
+        accents: accentsFor(metA.accentGroups, base), cycleLen: base },
+      { name: `B - ${deriv} pulsos${groupLabel(metB.accentGroups, deriv)} (nota ${NOTE_B})`,
+        channel: 1, note: NOTE_B,
+        stepTicks: (ppq * stepB.n) / stepB.d, count: deriv * cycles,
+        accents: accentsFor(metB.accentGroups, deriv), cycleLen: deriv },
     ],
   };
 }
@@ -159,7 +186,7 @@ function specMetrica({ relBase, relDeriv, relBpmBase }) {
 // POLIMETRÍA: mismo BPM, ciclos de distinto largo. Los dos pulsan cada negra;
 // lo que difiere es cada cuántos pulsos cae el acento. Vuelven a coincidir
 // cada mcm(A,B) negras.
-function specPolimetria({ polyBpm, polyBeatsA, polyBeatsB }) {
+function specPolimetria({ polyBpm, polyBeatsA, polyBeatsB, metA = {}, metB = {} }) {
   const a = Math.max(1, Math.round(polyBeatsA));
   const b = Math.max(1, Math.round(polyBeatsB));
   const bpm = polyBpm;
@@ -171,17 +198,22 @@ function specPolimetria({ polyBpm, polyBeatsA, polyBeatsB }) {
     bpm, ppq, timeSigNum: a, totalTicks: pulses * ppq, exact,
     fileName: `dualpulse-polimetria-${a}-${b}-${bpm}bpm.mid`,
     tracks: [
-      { name: `A - acento cada ${a} (nota ${NOTE_A})`, channel: 0, note: NOTE_A,
-        stepTicks: ppq, count: pulses, accentEvery: a },
-      { name: `B - acento cada ${b} (nota ${NOTE_B})`, channel: 1, note: NOTE_B,
-        stepTicks: ppq, count: pulses, accentEvery: b },
+      { name: `A - acento cada ${a}${groupLabel(metA.accentGroups, a)} (nota ${NOTE_A})`,
+        channel: 0, note: NOTE_A,
+        stepTicks: ppq, count: pulses,
+        accents: accentsFor(metA.accentGroups, a), cycleLen: a },
+      { name: `B - acento cada ${b}${groupLabel(metB.accentGroups, b)} (nota ${NOTE_B})`,
+        channel: 1, note: NOTE_B,
+        stepTicks: ppq, count: pulses,
+        accents: accentsFor(metB.accentGroups, b), cycleLen: b },
     ],
   };
 }
 
 // DUAL LIBRE: dos tempos independientes. El archivo lleva el tempo de A; B se
 // expresa como un paso de bpmA/bpmB negras. Se respetan las subdivisiones
-// (FIGURAS), con acento en cada pulso principal — que es lo que hace el
+// (FIGURAS), con acento fuerte en cada pulso principal y acento intermedio en
+// los arranques de grupo de la subdivisión (subAccents) — que es lo que hace el
 // scheduler en este modo, donde timeSig está fijo en 1/4.
 function specLibre({ metA, metB }) {
   const bpmA = Math.max(1, Math.round(metA.bpm));
@@ -209,10 +241,14 @@ function specLibre({ metA, metB }) {
     bpm: bpmA, ppq, timeSigNum: 4, totalTicks, exact,
     fileName: `dualpulse-libre-${bpmA}-${bpmB}bpm.mid`,
     tracks: [
-      { name: `A - ${bpmA} BPM (nota ${NOTE_A})`, channel: 0, note: NOTE_A,
-        stepTicks: tickA, count: countA, accentEvery: subA },
-      { name: `B - ${bpmB} BPM (nota ${NOTE_B})`, channel: 1, note: NOTE_B,
-        stepTicks: tickB, count: countB, accentEvery: subB },
+      { name: `A - ${bpmA} BPM${groupLabel(metA.subAccents, subA)} (nota ${NOTE_A})`,
+        channel: 0, note: NOTE_A,
+        stepTicks: tickA, count: countA,
+        accents: accentsFor(metA.subAccents, subA), cycleLen: subA },
+      { name: `B - ${bpmB} BPM${groupLabel(metB.subAccents, subB)} (nota ${NOTE_B})`,
+        channel: 1, note: NOTE_B,
+        stepTicks: tickB, count: countB,
+        accents: accentsFor(metB.subAccents, subB), cycleLen: subB },
     ],
   };
 }

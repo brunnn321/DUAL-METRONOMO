@@ -42,7 +42,7 @@ frente a la web es que funciona sin conexión y queda como programa propio.
 ```bash
 npm install
 npm run dev              # servidor de desarrollo
-npm test                 # 95 tests (vitest)
+npm test                 # 101 tests (vitest)
 npm run electron:preview # la app de escritorio, sin empaquetar
 npm run electron:build   # genera el instalador en release/
 ```
