@@ -1929,7 +1929,13 @@ export default function DualMetronome() {
   // ── render ─────────────────────────────────────────────────────────────────
   const isMetrica    = mode === "metrica";
   const isPolimetria = mode === "polimetria";
-  const centerLabel  = isMetrica ? `${relDeriv}:${relBase}` : isPolimetria ? `${polyBeatsA}:${polyBeatsB}` : undefined;
+  // Con la secuencia encendida el anillo de A ya muestra los pulsos del compás
+  // que suena, así que el centro tiene que decir ESE compás. Si sigue diciendo
+  // la relación del modo, el número del centro contradice lo que se ve y lo que
+  // se oye: un anillo de 9 pulsos debajo de un cartel que dice "6:4".
+  const seqStepNow = seqOn && seqPos ? seqSteps[seqPos.stepIdx] : null;
+  const modeLabel  = isMetrica ? `${relDeriv}:${relBase}` : isPolimetria ? `${polyBeatsA}:${polyBeatsB}` : undefined;
+  const centerLabel = seqStepNow ? `${seqStepNow.num}/${seqStepNow.den}` : modeLabel;
   // phase-sync cycle ring targets — real pulse counts, no wall-clock timers
   const polyTarget = polyCycleTarget(polyBeatsA, polyBeatsB);
   const { targetA: libreCycleTargetA, targetB: libreCycleTargetB } = libreCycleTargets(metA.bpm, metB.bpm);
@@ -1957,7 +1963,7 @@ export default function DualMetronome() {
           <div>
             {mode === "libre" ? (
               <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB}
-                centerLabel={`${metA.subdivision}:${metB.subdivision}`} showSubtitle={false} showMcm={false}
+                centerLabel={centerLabel ?? `${metA.subdivision}:${metB.subdivision}`} showSubtitle={false} showMcm={false}
                 totalAOverride={metA.subdivision} totalBOverride={metB.subdivision}
                 beatAOverride={metA.subTick} beatBOverride={metB.subTick}
                 durAOverride={60 / metA.bpm} durBOverride={60 / metB.bpm} vizStyle={vizStyle} fullscreen
@@ -2071,7 +2077,7 @@ export default function DualMetronome() {
         <>
           <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
             <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB}
-              centerLabel={`${metA.subdivision}:${metB.subdivision}`} showSubtitle={false} showMcm={false}
+              centerLabel={centerLabel ?? `${metA.subdivision}:${metB.subdivision}`} showSubtitle={false} showMcm={false}
               totalAOverride={metA.subdivision} totalBOverride={metB.subdivision}
               beatAOverride={metA.subTick} beatBOverride={metB.subTick}
               durAOverride={60 / metA.bpm} durBOverride={60 / metB.bpm} vizStyle={vizStyle}
