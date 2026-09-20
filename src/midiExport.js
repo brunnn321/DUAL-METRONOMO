@@ -180,29 +180,16 @@ export function exportForState(state) {
 
 export function specForState(state) {
   // La secuencia manda sobre el modo: cuando está encendida, es lo que suena.
-  if (state.seqOn && state.seqSteps)  return specSecuencia(state);
+  if (state.seqOnA || state.seqOnB) return specSecuencia(state);
   if (state.mode === 'metrica')    return specMetrica(state);
   if (state.mode === 'polimetria') return specPolimetria(state);
   return specLibre(state);
 }
 
-// SECUENCIA: una lista de pasos que cambia de compás a mitad del archivo, así
-// que es el único spec que necesita varios metas 0x58 y eventos con tick y
-// velocity resueltos uno por uno (el paso y el acento cambian en cada paso).
-// El BPM siempre manda sobre la negra: un pulso dura ppq*4/den ticks, o sea que
-// en 6/8 el click va en la corchea, al doble de velocidad que en 4/4.
-// Un paso en silencio no escribe notas pero sí ocupa sus compases: así el gap
-// click queda exportado como compases vacíos, que es lo que hay que estudiar.
-function specSecuencia({ seqSteps, seqBpm, metA = {} }) {
-  const steps = normalizeSequence(seqSteps);
-  const bpm = Math.max(1, Math.round(seqBpm || metA.bpm || 120));
-  // ticks por pulso = ppq * 4/den, así que el PPQ tiene que ser múltiplo de
-  // todos esos divisores para que no haya redondeo en ningún compás
-  const { ppq, exact } = pickPpq(steps.map((s) => frac(4, s.den).d));
-
-  const cycleQuarters = steps.reduce((q, s) => q + s.measures * s.num * (4 / s.den), 0);
-  const cycles = Math.max(1, Math.min(8, Math.floor(MAX_QUARTERS / Math.max(1, cycleQuarters))));
-
+// Recorre una secuencia y devuelve sus notas y sus cambios de compás en ticks.
+// Separado del spec porque con dos voces hay que hacerlo dos veces, cada una
+// con su propio BPM.
+function recorrerSecuencia(steps, bpm, ppq, cycles) {
   const events = [], timeSigs = [];
   let tick = 0, lastNum = null, lastDen = null;
   for (let c = 0; c < cycles; c++) {
@@ -216,28 +203,76 @@ function specSecuencia({ seqSteps, seqBpm, metA = {} }) {
       for (let m = 0; m < s.measures; m++) {
         for (let p = 0; p < s.num; p++) {
           if (!s.muted) {
-            events.push({
-              tick,
-              vel: p === 0 ? VEL_ACCENT : accents.has(p) ? VEL_SUB : VEL_NORMAL,
-            });
+            events.push({ tick, vel: p === 0 ? VEL_ACCENT : accents.has(p) ? VEL_SUB : VEL_NORMAL });
           }
           tick += stepTicks;
         }
       }
     }
   }
+  return { events, timeSigs, totalTicks: Math.round(tick) };
+}
 
-  const slug = steps.map((s) => `${s.measures}x${s.num}-${s.den}`).join('_').slice(0, 60);
-  return {
-    bpm, ppq, exact, timeSigs,
-    totalTicks: Math.round(tick),
-    fileName: `dualpulse-secuencia-${slug}-${bpm}bpm.mid`,
-    tracks: [{
-      name: `Secuencia - ${sequenceLabel(steps)} (nota ${NOTE_A})`,
-      channel: 0, note: NOTE_A,
-      stepTicks: Math.min(...steps.map((s) => (ppq * 4) / s.den)),
+const slugSecuencia = (steps) =>
+  steps.map((s) => `${s.measures}x${s.num}-${s.den}`).join('_').slice(0, 40);
+
+// SECUENCIA: una lista de pasos que cambia de compás a mitad del archivo, así
+// que es el único spec que necesita varios metas 0x58 y eventos con tick y
+// velocity resueltos uno por uno (el paso y el acento cambian en cada paso).
+// El BPM siempre manda sobre la negra: un pulso dura ppq*4/den ticks, o sea que
+// en 6/8 el click va en la corchea, al doble de velocidad que en 4/4.
+// Un paso en silencio no escribe notas pero sí ocupa sus compases: así el gap
+// click queda exportado como compases vacíos, que es lo que hay que estudiar.
+function specSecuencia({ seqOnA, seqStepsA, seqBpmA, seqOnB, seqStepsB, seqBpmB, metA = {}, metB = {} }) {
+  const voces = [];
+  if (seqOnA && seqStepsA) voces.push({
+    lado: 'A', steps: normalizeSequence(seqStepsA),
+    bpm: Math.max(1, Math.round(seqBpmA || metA.bpm || 120)),
+    note: NOTE_A, channel: 0,
+  });
+  if (seqOnB && seqStepsB) voces.push({
+    lado: 'B', steps: normalizeSequence(seqStepsB),
+    bpm: Math.max(1, Math.round(seqBpmB || metB.bpm || 120)),
+    note: NOTE_B, channel: 1,
+  });
+
+  // El archivo lleva un solo tempo, el de la primera voz. La segunda se expresa
+  // reescalando sus ticks por la razón de BPM, así que suena a su velocidad
+  // real aunque la regla del DAW marque el tempo de la otra.
+  const base = voces[0];
+  const ppq = pickPpq(voces.flatMap((v) => v.steps.map((s) => frac(4, s.den).d)))
+    .ppq;
+  const exact = pickPpq(voces.flatMap((v) => v.steps.map((s) => frac(4, s.den).d))).exact;
+
+  const pistas = [], sigs = [];
+  let total = 0;
+  for (const v of voces) {
+    const q = v.steps.reduce((a, s) => a + s.measures * s.num * (4 / s.den), 0);
+    const cycles = Math.max(1, Math.min(8, Math.floor(MAX_QUARTERS / Math.max(1, q))));
+    const r = recorrerSecuencia(v.steps, v.bpm, ppq, cycles);
+    // el tempo del archivo es el de la primera voz; la otra se estira o se
+    // encoge para que su duración real quede igual
+    const k = base.bpm / v.bpm;
+    const events = r.events.map((e) => ({ tick: Math.round(e.tick * k), vel: e.vel }));
+    const fin = Math.round(r.totalTicks * k);
+    total = Math.max(total, fin);
+    // Un SMF tiene UNA sola pista de compases: los metas salen de la primera
+    // voz. La segunda suena bien igual porque sus notas van en ticks exactos.
+    if (v === base) sigs.push(...r.timeSigs);
+    pistas.push({
+      name: `${v.lado} - ${sequenceLabel(v.steps)} @ ${v.bpm} BPM (nota ${v.note})`,
+      channel: v.channel, note: v.note,
+      stepTicks: Math.min(...v.steps.map((s) => ((ppq * 4) / s.den) * k)),
       events,
-    }],
+    });
+  }
+
+  const nombre = voces.map((v) => `${v.lado}-${slugSecuencia(v.steps)}`).join('__').slice(0, 90);
+  return {
+    bpm: base.bpm, ppq, exact, timeSigs: sigs,
+    totalTicks: total,
+    fileName: `dualpulse-secuencia-${nombre}-${base.bpm}bpm.mid`,
+    tracks: pistas,
   };
 }
 

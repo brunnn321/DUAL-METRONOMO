@@ -346,13 +346,13 @@ describe('exportación de la secuencia de compases', () => {
     { measures: 3, num: 3, den: 4 },
     { measures: 3, num: 6, den: 8, groups: [3, 3] },
   ];
-  const state = { seqOn: true, seqSteps: seq, seqBpm: 90 };
+  const state = { seqOnA: true, seqStepsA: seq, seqBpmA: 90 };
 
   it('la secuencia manda sobre el modo', () => {
     const spec = specForState({ ...state, mode: 'metrica', relBase: 4, relDeriv: 5, relBpmBase: 120 });
     expect(spec.fileName).toContain('secuencia');
     expect(spec.bpm).toBe(90);
-    expect(spec.tracks).toHaveLength(1); // la secuencia maneja un solo metrónomo
+    expect(spec.tracks).toHaveLength(1); // solo A encendida
   });
 
   it('escribe un cambio de compás por cada paso, con el denominador real', () => {
@@ -394,7 +394,7 @@ describe('exportación de la secuencia de compases', () => {
 
   it('un paso en silencio ocupa sus compases pero no escribe notas (gap click)', () => {
     const conSilencio = [{ measures: 1, num: 4, den: 4 }, { measures: 1, num: 4, den: 4, muted: true }];
-    const spec = specForState({ seqOn: true, seqSteps: conSilencio, seqBpm: 120 });
+    const spec = specForState({ seqOnA: true, seqStepsA: conSilencio, seqBpmA: 120 });
     const porVuelta = spec.totalTicks / spec.ppq;     // 2 compases de 4/4 por vuelta
     expect(porVuelta % 8).toBe(0);
     // ninguna nota cae dentro del segundo compás de ninguna vuelta
@@ -408,5 +408,48 @@ describe('exportación de la secuencia de compases', () => {
     expect(fileName).toMatch(/^dualpulse-secuencia-.*90bpm\.mid$/);
     expect([...bytes.slice(0, 4)]).toEqual([...'MThd'].map((c) => c.charCodeAt(0)));
     expect(bytes[11]).toBe(2); // tempo + 1 pista
+  });
+});
+
+describe('exportación con las dos secuencias encendidas', () => {
+  const a = [{ measures: 2, num: 5, den: 4 }];
+  const b = [{ measures: 3, num: 3, den: 4 }];
+
+  it('saca una pista por voz, cada una con su BPM en el nombre', () => {
+    const spec = specForState({ seqOnA: true, seqStepsA: a, seqBpmA: 90, seqOnB: true, seqStepsB: b, seqBpmB: 120 });
+    expect(spec.tracks).toHaveLength(2);
+    expect(spec.tracks[0].name).toContain('90 BPM');
+    expect(spec.tracks[1].name).toContain('120 BPM');
+    expect(spec.tracks[0].channel).not.toBe(spec.tracks[1].channel);
+  });
+
+  it('el tempo del archivo es el de A, y B se reescala para durar lo real', () => {
+    const spec = specForState({ seqOnA: true, seqStepsA: a, seqBpmA: 90, seqOnB: true, seqStepsB: b, seqBpmB: 120 });
+    expect(spec.bpm).toBe(90);
+    // B va a 120 contra un archivo a 90: sus pulsos duran 90/120 = 0,75 negras
+    const ticksB = spec.tracks[1].events.map((e) => e.tick);
+    const pasoB = ticksB[1] - ticksB[0];
+    expect(pasoB).toBe(Math.round(spec.ppq * 0.75));
+  });
+
+  it('los compases del archivo son los de A: un SMF tiene una sola métrica', () => {
+    const spec = specForState({
+      seqOnA: true, seqStepsA: [{ measures: 1, num: 7, den: 8 }], seqBpmA: 90,
+      seqOnB: true, seqStepsB: [{ measures: 1, num: 3, den: 4 }], seqBpmB: 90,
+    });
+    expect(spec.timeSigs.map((s) => [s.num, s.den])).toEqual([[7, 8]]);
+  });
+
+  it('con solo B encendida, B es la voz base', () => {
+    const spec = specForState({ seqOnB: true, seqStepsB: b, seqBpmB: 100 });
+    expect(spec.tracks).toHaveLength(1);
+    expect(spec.bpm).toBe(100);
+    expect(spec.timeSigs.map((s) => [s.num, s.den])).toEqual([[3, 4]]);
+  });
+
+  it('el archivo termina después de la última nota de las dos voces', () => {
+    const spec = specForState({ seqOnA: true, seqStepsA: a, seqBpmA: 90, seqOnB: true, seqStepsB: b, seqBpmB: 120 });
+    const ultimo = Math.max(...spec.tracks.flatMap((t) => t.events.map((e) => e.tick)));
+    expect(spec.totalTicks).toBeGreaterThanOrEqual(ultimo);
   });
 });
