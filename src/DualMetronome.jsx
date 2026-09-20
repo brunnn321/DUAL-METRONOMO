@@ -4,7 +4,7 @@ import { Play, Square, Volume2, VolumeX, ChevronRight, Lightbulb } from "lucide-
 import { lcm, polyCycleTarget, libreCycleTargets, cycleIndex, cycleRemaining, isSyncPulse, derivedBpm, reduceRatio, perceptualBand, accentSet, groupsFromIndices, effectiveGroups } from "./phase.js";
 import { loadSettings, saveSettings } from "./settings.js";
 // secuencia de compases (pestaña SECUENCIA de PRÁCTICA) — cálculo puro, testeable
-import { pulseAt, sequenceLabel, normalizeSequence, normalizeStep, DEFAULT_SEQUENCE, DEN_VALUES, MAX_NUM } from "./sequence.js";
+import { pulseAt, sequenceLabel, normalizeSequence, normalizeStep, normalizePresets, savePreset, deletePreset, DEFAULT_SEQUENCE, DEN_VALUES, MAX_NUM } from "./sequence.js";
 import { exportForState, downloadMidi } from "./midiExport.js";
 
 // ─── constants ────────────────────────────────────────────────────────────────
@@ -395,7 +395,7 @@ function CircularVisualizer({
 }
 
 // ─── polimetría panel ─────────────────────────────────────────────────────────
-function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap, metA, metB, onChangeA, onChangeB, bpmFlash }) {
+function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap, metA, metB, onChangeA, onChangeB, bpmFlash, accentView }) {
   const ratio    = `${derivado}:${base}`;
   const bpmB     = derivedBpm(bpmBase, base, derivado);
   const fmtBpm   = (v) => Number.isInteger(v) ? v : v.toFixed(2);
@@ -457,8 +457,14 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap,
           <div key={label} style={{ flex:1, minWidth:200, display:"flex", flexDirection:"column", gap:10 }}>
             <NumberSelect label={label} value={val} values={PULSE_VALUES} onChange={set} accent={accent} />
             <div>
-              <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:6 }}>ACENTOS</div>
-              <AccentDots total={beatsPerMeasure(met.timeSig)} groups={met.accentGroups}
+              <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:6 }}>
+                ACENTOS{label === "A" && accentView && (
+                  <span style={{ color:"#ffd04a", marginLeft:6 }}>PASO {accentView.step}</span>
+                )}
+              </div>
+              <AccentDots
+                total={label === "A" && accentView ? accentView.total : beatsPerMeasure(met.timeSig)}
+                groups={label === "A" && accentView ? accentView.groups : met.accentGroups}
                 onChange={(g) => onChange({ accentGroups: g })} accent={accent} />
             </div>
           </div>
@@ -810,9 +816,10 @@ function PhaseSyncInfo({ bpmA, bpmB, pulseCountA, running }) {
 const SEQ_ACC = "#ffd04a";
 const MEASURE_VALUES = range(1, 16);
 
-function SeqNum({ value, values, onChange }) {
+function SeqNum({ value, values, onChange, stop }) {
   return (
-    <select value={value} onChange={(e) => onChange(Number(e.target.value))} style={{
+    <select value={value} onChange={(e) => onChange(Number(e.target.value))}
+      onClick={stop ? (e) => e.stopPropagation() : undefined} style={{
       background:"#252830", border:"1px solid #3a3d47", borderRadius:5, color:"#ddd",
       fontFamily:"'JetBrains Mono',monospace", fontSize:12, padding:"3px 2px",
       outline:"none", cursor:"pointer", width:40, textAlign:"center",
@@ -843,36 +850,42 @@ function MeasureDots({ total, current }) {
   );
 }
 
-function SequencePractice({ steps, onSteps, on, onToggle, pos }) {
+function SequencePractice({ steps, onSteps, on, onToggle, pos, presets, onSavePreset, onDeletePreset, sel, onSel }) {
   const set = (i, patch) => onSteps(steps.map((s, j) => (j === i ? normalizeStep({ ...s, ...patch }) : s)));
   const del = (i) => { if (steps.length > 1) onSteps(steps.filter((_, j) => j !== i)); };
   const add = () => onSteps([...steps, normalizeStep({ measures:1, num:4, den:4 })]);
+  const [nombre, setNombre] = useState("");
+  const guardar = () => { if (nombre.trim()) { onSavePreset(nombre, steps); setNombre(""); } };
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
       {steps.map((s, i) => {
         const live = on && pos?.stepIdx === i;
+        const elegido = sel === i;
         return (
-          <div key={i} style={{
-            borderRadius:7,
-            background: live ? SEQ_ACC + "14" : "transparent",
-            border:`1px solid ${live ? SEQ_ACC + "66" : "transparent"}`,
+          <div key={i}
+            onClick={() => onSel(elegido ? null : i)}
+            title={elegido ? "Editando los acentos de este paso — clic para soltar" : "Clic para editar los acentos de este paso"}
+            style={{
+            borderRadius:7, cursor:"pointer",
+            background: elegido ? SEQ_ACC + "22" : live ? SEQ_ACC + "14" : "transparent",
+            border:`1px solid ${elegido ? SEQ_ACC : live ? SEQ_ACC + "66" : "transparent"}`,
             opacity: s.muted ? 0.45 : 1, transition:"background 0.15s, border-color 0.15s",
           }}>
             <div style={{ display:"flex", alignItems:"center", gap:7, padding:"5px 8px" }}>
-              <button onClick={() => set(i, { muted: !s.muted })} style={{
+              <button onClick={(e) => { e.stopPropagation(); set(i, { muted: !s.muted }); }} style={{
                 width:9, height:9, borderRadius:"50%", padding:0, cursor:"pointer", flexShrink:0,
                 background: s.muted ? "transparent" : SEQ_ACC,
                 border:`1px solid ${s.muted ? "#555" : SEQ_ACC}`,
               }} />
-              <SeqNum value={s.measures} values={MEASURE_VALUES} onChange={(v) => set(i, { measures:v })} />
+              <SeqNum stop value={s.measures} values={MEASURE_VALUES} onChange={(v) => set(i, { measures:v })} />
               <span style={{ color:"#555", fontSize:11 }}>×</span>
-              <SeqNum value={s.num} values={range(1, MAX_NUM)} onChange={(v) => set(i, { num:v, groups:null })} />
+              <SeqNum stop value={s.num} values={range(1, MAX_NUM)} onChange={(v) => set(i, { num:v, groups:null })} />
               <span style={{ color:"#555", fontSize:12 }}>/</span>
-              <SeqNum value={s.den} values={DEN_VALUES} onChange={(v) => set(i, { den:v })} />
+              <SeqNum stop value={s.den} values={DEN_VALUES} onChange={(v) => set(i, { den:v })} />
               <div style={{ flex:1, display:"flex", justifyContent:"flex-end", padding:"4px 0" }}>
                 <MeasureDots total={s.measures} current={live ? pos?.measureInStep : null} />
               </div>
-              <button onClick={() => del(i)} style={{
+              <button onClick={(e) => { e.stopPropagation(); del(i); }} style={{
                 background:"none", border:"none", color:"#555", cursor:"pointer",
                 fontSize:12, padding:"0 2px", flexShrink:0,
               }}>✕</button>
@@ -892,6 +905,43 @@ function SequencePractice({ steps, onSteps, on, onToggle, pos }) {
           letterSpacing:1, padding:"7px 16px", cursor:"pointer",
         }}>{on ? "PARAR" : "INICIAR"}</button>
       </div>
+
+      {/* presets: guardar la secuencia de hoy con un nombre y recuperarla */}
+      <div style={{ borderTop:"1px solid #252830", marginTop:4, paddingTop:10, display:"flex", flexDirection:"column", gap:8 }}>
+        <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+          <input value={nombre} onChange={(e) => setNombre(e.target.value)} maxLength={40}
+            onKeyDown={(e) => { if (e.key === "Enter") guardar(); }}
+            placeholder="Nombre del preset"
+            style={{
+              flex:1, minWidth:0, background:"#252830", border:"1px solid #3a3d47", borderRadius:5,
+              color:"#ddd", fontFamily:"monospace", fontSize:11, padding:"5px 8px", outline:"none",
+            }} />
+          <button onClick={guardar} disabled={!nombre.trim()} style={{
+            background:"none", border:`1px solid ${nombre.trim() ? SEQ_ACC : "#3a3d47"}`, borderRadius:5,
+            color: nombre.trim() ? SEQ_ACC : "#444", fontFamily:"monospace", fontSize:10, fontWeight:600,
+            padding:"6px 12px", cursor: nombre.trim() ? "pointer" : "default", letterSpacing:1, flexShrink:0,
+          }}>GUARDAR</button>
+        </div>
+        {presets?.length > 0 && (
+          <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+            {presets.map((p) => (
+              <span key={p.name} style={{
+                display:"inline-flex", alignItems:"center", gap:5,
+                background:"#252830", border:"1px solid #3a3d47", borderRadius:12, padding:"3px 4px 3px 10px",
+              }}>
+                <button onClick={() => onSteps(p.steps)} title={sequenceLabel(p.steps)} style={{
+                  background:"none", border:"none", color:"#bbb", cursor:"pointer",
+                  fontFamily:"monospace", fontSize:10, padding:0,
+                }}>{p.name}</button>
+                <button onClick={() => onDeletePreset(p.name)} title="Borrar preset" style={{
+                  background:"none", border:"none", color:"#555", cursor:"pointer",
+                  fontSize:10, lineHeight:1, padding:"0 3px",
+                }}>✕</button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -900,7 +950,8 @@ function SequencePractice({ steps, onSteps, on, onToggle, pos }) {
 // Both children stay mounted (hidden with display:none) so a running timer or
 // progressive session keeps counting while collapsed or on the other tab.
 function PracticePanel({ onBpmChange, onActivate, running, status, onStatus,
-                         seqSteps, onSeqSteps, seqOn, onSeqToggle, seqPos }) {
+                         seqSteps, onSeqSteps, seqOn, onSeqToggle, seqPos,
+                         countIn, onCountIn, presets, onSavePreset, onDeletePreset, seqSel, onSeqSel }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab]   = useState("prog");
   const active = status?.progOn || seqOn;
@@ -926,6 +977,25 @@ function PracticePanel({ onBpmChange, onActivate, running, status, onStatus,
         </span>
       </button>
       <div style={{ display: open ? "flex" : "none", flexDirection:"column", gap:12, padding:"0 16px 16px" }}>
+        {/* Vale para los tres modos y también para la secuencia, así que vive
+            fuera de las pestañas. */}
+        <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+          <span style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1 }}>CUENTA DE ENTRADA</span>
+          <div style={{ display:"flex", gap:4 }}>
+            {[[0,"NO"],[1,"1 COMPÁS"],[2,"2 COMPASES"]].map(([v, lbl]) => {
+              const on = countIn === v;
+              return (
+                <button key={v} onClick={() => onCountIn(v)} style={{
+                  background: on ? "#ffd04a" : "#252830",
+                  border:`1px solid ${on ? "#ffd04a" : "#3a3d47"}`,
+                  borderRadius:5, color: on ? "#15171c" : "#666",
+                  fontFamily:"monospace", fontSize:10, fontWeight: on ? 700 : 400,
+                  padding:"5px 10px", cursor:"pointer",
+                }}>{lbl}</button>
+              );
+            })}
+          </div>
+        </div>
         <div style={{ display:"flex", background:"#15171c", borderRadius:8, padding:3, gap:2 }}>
           {[["prog","PROGRESIVA"],["seq","SECUENCIA"]].map(([k, lbl]) => {
             const on = tab === k;
@@ -944,7 +1014,9 @@ function PracticePanel({ onBpmChange, onActivate, running, status, onStatus,
           <ProgressivePractice onBpmChange={onBpmChange} onActivate={onActivate} running={running} onStatus={onStatus} />
         </div>
         <div style={{ display: tab === "seq" ? "block" : "none" }}>
-          <SequencePractice steps={seqSteps} onSteps={onSeqSteps} on={seqOn} onToggle={onSeqToggle} pos={seqPos} />
+          <SequencePractice steps={seqSteps} onSteps={onSeqSteps} on={seqOn} onToggle={onSeqToggle} pos={seqPos}
+            presets={presets} onSavePreset={onSavePreset} onDeletePreset={onDeletePreset}
+            sel={seqSel} onSel={onSeqSel} />
         </div>
       </div>
     </div>
@@ -1116,7 +1188,7 @@ function SyncControls({ metA, metB, onChangeA, onChangeB }) {
 }
 
 // ─── polimetría panel ─────────────────────────────────────────────────────────
-function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap, pulseCount, running, metA, metB, onChangeA, onChangeB, bpmFlash }) {
+function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap, pulseCount, running, metA, metB, onChangeA, onChangeB, bpmFlash, accentView }) {
   const lcmAB = lcm(beatsA, beatsB);
   const remaining = cycleRemaining(pulseCount, lcmAB);
   const [open, setOpen] = useState(true);
@@ -1162,8 +1234,14 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap
           <div key={label} style={{ flex:1, minWidth:200, display:"flex", flexDirection:"column", gap:10 }}>
             <NumberSelect label={label} value={val} values={PULSE_VALUES} onChange={set} accent={color} />
             <div>
-              <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:6 }}>ACENTOS</div>
-              <AccentDots total={beatsPerMeasure(met.timeSig)} groups={met.accentGroups}
+              <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:6 }}>
+                ACENTOS{label === "A" && accentView && (
+                  <span style={{ color:"#ffd04a", marginLeft:6 }}>PASO {accentView.step}</span>
+                )}
+              </div>
+              <AccentDots
+                total={label === "A" && accentView ? accentView.total : beatsPerMeasure(met.timeSig)}
+                groups={label === "A" && accentView ? accentView.groups : met.accentGroups}
                 onChange={(g) => onChange({ accentGroups: g })} accent={color} />
             </div>
           </div>
@@ -1259,6 +1337,21 @@ export default function DualMetronome() {
   // dato existe para no tener que migrar lo guardado si algún día se elige.
   const [seqTarget] = useState(savedSettings.seqTarget === "B" ? "B" : "A");
   const seqTargetRef = useRef(seqTarget);
+  // secuencias guardadas con nombre
+  const [seqPresets, setSeqPresets] = useState(() => normalizePresets(savedSettings.seqPresets));
+  const handleSavePreset   = useCallback((n, st) => setSeqPresets((l) => savePreset(l, n, st)), []);
+  const handleDeletePreset = useCallback((n) => setSeqPresets((l) => deletePreset(l, n)), []);
+  // compases de cuenta de entrada antes del primer pulso: 0, 1 o 2
+  const [countIn, setCountIn] = useState(() => [0,1,2].includes(savedSettings.countIn) ? savedSettings.countIn : 0);
+  const countInRef = useRef(0);
+  useEffect(() => { countInRef.current = countIn; }, [countIn]);
+  // Paso seleccionado a mano para editar sus acentos. Sin seleccion, el editor
+  // sigue al paso que suena; el problema de eso solo es que tocar un punto justo
+  // en el cambio de compas se lo aplicaba al paso que acababa de entrar.
+  const [seqSel, setSeqSel] = useState(null);
+  const seqSelRef = useRef(null);
+  // seqSelEff se calcula más abajo; el ref lo lee changeMetA, que corre fuera del render
+  const syncSeqSel = (v) => { seqSelRef.current = v; };
   const [seqPos,   setSeqPos]   = useState(null); // { stepIdx, measureInStep } en vivo
   const seqPosRef = useRef(null);
   const seqRef      = useRef(null);
@@ -1499,6 +1592,33 @@ export default function DualMetronome() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metB.subTick]);
 
+  // ── cuenta de entrada ──────────────────────────────────────────────────────
+  // No toca el scheduler: agenda sus propios clicks en la ventana previa y
+  // devuelve cuánto hay que correr el arranque. Todo lo demás sigue empezando
+  // en t0, con la misma grilla de siempre.
+  // Timbre aparte a propósito (clave/rim), para que no se confunda con el
+  // patrón que viene después.
+  const scheduleCountIn = useCallback((ctx, from) => {
+    const bars = countInRef.current;
+    if (!bars) return 0;
+    const met = seqTargetRef.current === "B" ? metBRef.current : metARef.current;
+    const bpm = met.bpm || 120;
+    let beats, step;
+    if (seqRef.current) {
+      // con la secuencia encendida se cuenta el compás con el que va a arrancar
+      const first = pulseAt(0, seqRef.current, bpm);
+      beats = first.num; step = first.seconds;
+    } else {
+      beats = beatsPerMeasure(met.timeSig); step = 60 / bpm;
+    }
+    beats = Math.max(1, beats);
+    const total = beats * bars;
+    for (let i = 0; i < total; i++) {
+      synthClick(ctx, from + i * step, i % beats === 0 ? "clave" : "rim", 0.9, 0);
+    }
+    return total * step;
+  }, []);
+
   const startDual = useCallback(() => {
     // defensive: never stack a second scheduler/context on top of a live one
     clearInterval(schedRef.current); schedRef.current = null;
@@ -1506,14 +1626,15 @@ export default function DualMetronome() {
     setPulseCountA(0); setPulseCountB(0); // fresh cycle
     const ctx = createCtx(); ctxRef.current = ctx;
     if (!ctx) return;
-    const t0  = ctx.currentTime + 0.1;
+    const lead = scheduleCountIn(ctx, ctx.currentTime + 0.1);
+    const t0  = ctx.currentTime + 0.1 + lead;
     nextARef.current = t0; nextBRef.current = t0;
     tickARef.current = 0;  tickBRef.current = 0;
     setMeasuresA(0); setMeasuresB(0);
     runARef.current = true; runBRef.current = true;
     setRunningA(true); setRunningB(true); setDualOn(true);
     scheduleBeats(); schedRef.current = setInterval(scheduleBeats, 25);
-  }, [scheduleBeats]);
+  }, [scheduleBeats, scheduleCountIn]);
 
   // ── individual toggles (DUAL LIBRE only) ──────────────────────────────────
   const toggleA = () => {
@@ -1648,8 +1769,9 @@ export default function DualMetronome() {
     // Con la secuencia encendida, tocar los ACENTOS edita el paso que está
     // sonando, no una agrupación suelta del modo: el editor es uno solo y
     // siempre edita el compás que se escucha.
-    if (seqRef.current && patch.accentGroups !== undefined && seqPosRef.current) {
-      const idx = seqPosRef.current.stepIdx;
+    if (seqRef.current && patch.accentGroups !== undefined && (seqSelRef.current != null || seqPosRef.current)) {
+      // la seleccion manda; si no hay, sigue al que suena
+      const idx = seqSelRef.current ?? seqPosRef.current.stepIdx;
       setSeqSteps((prev) => prev.map((s, j) => (j === idx ? normalizeStep({ ...s, groups: patch.accentGroups }) : s)));
       return;
     }
@@ -1761,11 +1883,11 @@ export default function DualMetronome() {
   // only stable config, never live playback state — so this can't fire on
   // every beat tick, only when the user actually changes a setting
   const settingsSnapshot = useMemo(() => ({
-    mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB, seqSteps, seqTarget,
+    mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB, seqSteps, seqTarget, countIn, seqPresets,
     metA: { bpm:metA.bpm, baseBpm:metA.baseBpm, timeSig:metA.timeSig, subdivision:metA.subdivision, strongSound:metA.strongSound, weakSound:metA.weakSound, volume:metA.volume, muted:metA.muted, accentGroups:metA.accentGroups, subAccents:metA.subAccents },
     metB: { bpm:metB.bpm, baseBpm:metB.baseBpm, timeSig:metB.timeSig, subdivision:metB.subdivision, strongSound:metB.strongSound, weakSound:metB.weakSound, volume:metB.volume, muted:metB.muted, accentGroups:metB.accentGroups, subAccents:metB.subAccents },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB, seqSteps, seqTarget,
+  }), [mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB, seqSteps, seqTarget, countIn, seqPresets,
     metA.bpm, metA.baseBpm, metA.timeSig, metA.subdivision, metA.strongSound, metA.weakSound, metA.volume, metA.muted, metA.accentGroups, metA.subAccents,
     metB.bpm, metB.baseBpm, metB.timeSig, metB.subdivision, metB.strongSound, metB.weakSound, metB.volume, metB.muted, metB.accentGroups, metB.subAccents]);
   useEffect(() => {
@@ -1791,6 +1913,18 @@ export default function DualMetronome() {
     setExportFlash(true);
     setTimeout(() => setExportFlash(false), 900);
   }, [mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB, seqOn, seqSteps]);
+
+  // Se deriva en vez de guardarse corregida: borrar un paso no deja la selección
+  // colgada apuntando a un índice que ya no existe.
+  const seqSelEff = seqSel != null && seqSel < seqSteps.length ? seqSel : null;
+
+  useEffect(() => { syncSeqSel(seqSelEff); });
+
+  // Con un paso elegido, el editor de ACENTOS muestra y edita ESE compás, no el
+  // que está sonando. Es un override de visualización: no toca lo que suena.
+  const accentView = (seqOn && seqSelEff != null && seqSteps[seqSelEff])
+    ? { total: seqSteps[seqSelEff].num, groups: seqSteps[seqSelEff].groups, step: seqSelEff + 1 }
+    : null;
 
   // ── render ─────────────────────────────────────────────────────────────────
   const isMetrica    = mode === "metrica";
@@ -1887,10 +2021,10 @@ export default function DualMetronome() {
           </div>
           <div style={{ maxWidth:680, margin:"0 auto 20px" }}>
             <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} status={practiceStatus} onStatus={updatePracticeStatus}
-              seqSteps={seqSteps} onSeqSteps={setSeqSteps} seqOn={seqOn} onSeqToggle={handleSeqToggle} seqPos={seqPos} />
+              seqSteps={seqSteps} onSeqSteps={setSeqSteps} seqOn={seqOn} onSeqToggle={handleSeqToggle} seqPos={seqPos} countIn={countIn} onCountIn={setCountIn} presets={seqPresets} onSavePreset={handleSavePreset} onDeletePreset={handleDeletePreset} seqSel={seqSelEff} onSeqSel={setSeqSel} />
           </div>
           <div style={{ marginBottom:20 }}>
-            <PoliPanel
+            <PoliPanel accentView={accentView}
               bpmBase={relBpmBase} base={relBase} derivado={relDeriv}
               onBpmBase={handleRelBpmBase} onBase={handleRelBase} onDeriv={handleRelDeriv}
               onTap={handleGlobalTap}
@@ -1914,10 +2048,10 @@ export default function DualMetronome() {
           </div>
           <div style={{ maxWidth:680, margin:"0 auto 20px" }}>
             <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} status={practiceStatus} onStatus={updatePracticeStatus}
-              seqSteps={seqSteps} onSeqSteps={setSeqSteps} seqOn={seqOn} onSeqToggle={handleSeqToggle} seqPos={seqPos} />
+              seqSteps={seqSteps} onSeqSteps={setSeqSteps} seqOn={seqOn} onSeqToggle={handleSeqToggle} seqPos={seqPos} countIn={countIn} onCountIn={setCountIn} presets={seqPresets} onSavePreset={handleSavePreset} onDeletePreset={handleDeletePreset} seqSel={seqSelEff} onSeqSel={setSeqSel} />
           </div>
           <div style={{ marginBottom:20 }}>
-            <PolyMetriaPanel
+            <PolyMetriaPanel accentView={accentView}
               bpm={polyBpm} beatsA={polyBeatsA} beatsB={polyBeatsB}
               onBpm={handlePolyBpm} onBeatsA={handlePolyBeatsA} onBeatsB={handlePolyBeatsB}
               onTap={handlePolyTap}
@@ -1947,7 +2081,7 @@ export default function DualMetronome() {
           <PhaseSyncInfo bpmA={metA.bpm} bpmB={metB.bpm} pulseCountA={pulseCountA} running={dualOn} />
           <div style={{ maxWidth:880, margin:"0 auto 20px" }}>
             <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} status={practiceStatus} onStatus={updatePracticeStatus}
-              seqSteps={seqSteps} onSeqSteps={setSeqSteps} seqOn={seqOn} onSeqToggle={handleSeqToggle} seqPos={seqPos} />
+              seqSteps={seqSteps} onSeqSteps={setSeqSteps} seqOn={seqOn} onSeqToggle={handleSeqToggle} seqPos={seqPos} countIn={countIn} onCountIn={setCountIn} presets={seqPresets} onSavePreset={handleSavePreset} onDeletePreset={handleDeletePreset} seqSel={seqSelEff} onSeqSel={setSeqSel} />
           </div>
           <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", maxWidth:880, margin:"0 auto 90px" }}>
             <MetronomePanel color="A" state={metA} onChange={changeMetA} running={runningA} onToggle={toggleA} measures={measuresA} bpmFlash={bpmFlash} />

@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  normalizeStep, normalizeSequence, pulseSeconds, sequenceTotals, pulseAt,
-  sequenceLabel, DEFAULT_SEQUENCE, DEN_VALUES, MAX_NUM,
-} from "./sequence.js";
+import { normalizeStep, normalizeSequence, pulseSeconds, sequenceTotals, pulseAt, sequenceLabel, DEFAULT_SEQUENCE, DEN_VALUES, MAX_NUM, normalizePresets, savePreset, deletePreset, MAX_PRESETS, MAX_MEASURES } from './sequence.js';
 
 // el ejemplo que pidió el usuario: 2 × 4/4, 3 × 3/4, 3 × 6/8 agrupado 3+3
 const EJEMPLO = DEFAULT_SEQUENCE;
@@ -139,5 +136,46 @@ describe("pulseAt", () => {
 describe("sequenceLabel", () => {
   it("resume la secuencia en una línea", () => {
     expect(sequenceLabel(EJEMPLO)).toBe("2×4/4 · 3×3/4 · 3×6/8");
+  });
+});
+
+// ── presets ──────────────────────────────────────────────────────────────────
+describe('presets de secuencias', () => {
+  const a = [{ measures: 2, num: 4, den: 4 }];
+  const b = [{ measures: 3, num: 7, den: 8 }];
+
+  it('guarda con nombre y devuelve la secuencia normalizada', () => {
+    const l = savePreset([], 'Songo', a);
+    expect(l).toHaveLength(1);
+    expect(l[0].name).toBe('Songo');
+    expect(l[0].steps[0]).toMatchObject({ measures: 2, num: 4, den: 4, muted: false });
+  });
+
+  it('guardar con un nombre que ya existe lo pisa, no lo duplica', () => {
+    let l = savePreset([], 'Songo', a);
+    l = savePreset(l, 'songo', b); // mismo nombre, otra caja
+    expect(l).toHaveLength(1);
+    expect(l[0].steps[0].num).toBe(7);
+  });
+
+  it('ignora nombres vacíos y secuencias vacías', () => {
+    expect(savePreset([], '   ', a)).toHaveLength(0);
+    expect(normalizePresets([{ name: 'x', steps: [] }])).toHaveLength(0);
+    expect(normalizePresets(null)).toEqual([]);
+  });
+
+  it('borra por nombre sin importar mayúsculas', () => {
+    const l = savePreset(savePreset([], 'Uno', a), 'Dos', b);
+    expect(deletePreset(l, 'UNO').map((p) => p.name)).toEqual(['Dos']);
+  });
+
+  it('sanea un preset guardado por una versión vieja', () => {
+    const l = normalizePresets([{ name: 'raro', steps: [{ measures: 999, num: 99, den: 7 }] }]);
+    expect(l[0].steps[0]).toMatchObject({ measures: MAX_MEASURES, num: MAX_NUM, den: 4 });
+  });
+
+  it('corta en MAX_PRESETS', () => {
+    const muchos = Array.from({ length: MAX_PRESETS + 10 }, (_, i) => ({ name: `p${i}`, steps: a }));
+    expect(normalizePresets(muchos)).toHaveLength(MAX_PRESETS);
   });
 });

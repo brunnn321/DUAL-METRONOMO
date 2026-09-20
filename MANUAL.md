@@ -50,6 +50,8 @@ Hay tres modos seleccionables en la barra superior:
 | **DUAL TEMPO** | Politempo — dos metrónomos con BPM completamente independientes |
 | **DUAL POLY** | Polimetría con pulso común — mismo BPM, cada uno agrupa en un ciclo de distinta longitud |
 
+Además, el panel **PRÁCTICA** trae una **SECUENCIA** de compases que funciona sobre cualquiera de los tres modos (ver más abajo).
+
 **Sobre los nombres.** DUAL TEMPO no es "metrónomos libres": al tener BPM independientes sin unidad compartida, es el terreno del *politempo* — el recurso de Ligeti (*Poème symphonique*, 1962, para 100 metrónomos) y de los cánones de tempo de Conlon Nancarrow. El aro de sincronización de fase de este modo (ver más abajo) muestra en vivo el "punto de convergencia" — el instante exacto en que las dos capas vuelven a coincidir — que es literalmente el recurso formal que Nancarrow inventó para sus estudios de pianola.
 
 ---
@@ -201,25 +203,43 @@ El botón de **flecha hacia abajo** (arriba a la izquierda) baja un archivo `.mi
 
 **Un detalle al importar:** si tu programa tiene activada la cuantización automática al importar MIDI, desactívala. Si no, puede "corregir" los quintillos y septillos y arruinar justamente lo que hace especial al patrón. Lo mismo con la vista de partitura: puede dibujarlos raro aunque las posiciones estén bien. Mira el editor de piano roll.
 
+**Con la secuencia encendida se exporta la secuencia**, no el modo. El archivo trae un cambio de compás real en cada paso —`4/4`, `3/4`, `6/8`, con su denominador correcto— así que el programa lo lee con la métrica que corresponde en cada tramo, no todo forzado a `x/4`. Los pasos apagados salen como compases vacíos, que es justamente lo que hay que estudiar. Es una sola pista, porque la secuencia maneja un solo metrónomo.
+
 **Cuánto dura cada archivo:** 8 ciclos en DUAL SINC, hasta 4 vueltas completas del ciclo largo en DUAL POLY (menos si el ciclo es muy largo, como 11 contra 13), y unos 16 compases en DUAL TEMPO. Si necesitas más, lo repites en loop dentro de tu programa.
 
 ---
 
 ## Práctica
 
-El panel **PRÁCTICA**, presente en los tres modos, tiene dos pestañas:
+El panel **PRÁCTICA**, presente en los tres modos, tiene dos pestañas y un ajuste común.
 
-**TIMER** — cuenta regresiva tipo pomodoro. Presets de 5 a 60 minutos, o un valor personalizado de 1 a 180 minutos. Al llegar a 0 suena una alarma de tres tonos y detiene ambos metrónomos automáticamente.
+**Cuenta de entrada** — arriba de las pestañas. Elige **NO**, **1 compás** o **2 compases**. Antes del primer pulso suena esa cantidad de compases con un timbre distinto (clave en el 1, rim en el resto), para que no se confunda con el patrón. Vale para los tres modos y también para la secuencia.
 
-**PROGRESIVA** — sube el BPM automáticamente en pasos, a intervalos configurables (BPM inicial, BPM máximo, incremento, y segundos entre pasos). Al llegar al máximo puedes elegir que se detenga, se mantenga, o vuelva a empezar.
+**PROGRESIVA** — sube el BPM automáticamente en pasos: BPM inicial (desde 30), BPM máximo, incremento y segundos entre pasos (desde 1 segundo). Al llegar al máximo puedes elegir que se detenga, se mantenga o vuelva a empezar.
 
-Ambas pestañas siguen contando aunque colapses el panel o cambies de pestaña; la barra colapsada muestra el tiempo restante.
+El cambio de tempo es **continuo**: el metrónomo no se corta ni vuelve al pulso 1 en cada incremento, y el contador de compases sigue de largo. El número de BPM destella en amarillo en el instante del cambio, para que distingas si aceleró el metrónomo o aceleraste tú.
+
+**SECUENCIA** — una lista de pasos que se repite en loop. Cada paso es *"N compases de X/Y"*: por ejemplo **2×4/4 · 3×3/4 · 3×6/8**, que es lo que suena en muchos temas con cambio de métrica.
+
+- El **punto de la izquierda** apaga un paso. Un paso apagado **ocupa sus compases pero no suena**: eso es el *gap click*, el ejercicio de tocar sin referencia para desarrollar tiempo interno. Ejemplo: `2×4/4` sonando y `2×4/4` apagado te da dos compases con click y dos sin.
+- Los puntos de la derecha muestran en qué compás del paso vas.
+- **El BPM siempre se refiere a la negra.** En un compás de `x/8` el click va en la corchea, o sea al doble de velocidad que en `x/4` al mismo BPM. Lo que cambia al cambiar de compás no es la velocidad del pulso, sino cuántos pulsos entran antes del acento. Es lo que se lee en una partitura.
+- **La secuencia maneja un solo metrónomo (A).** El otro sigue con el modo que tengas puesto y hace de pulso de referencia. Para medir una desviación hace falta algo estable contra qué medirla; dos capas cambiando de compás a la vez no dejan referencia.
+- Cambiar de modo apaga la secuencia: el compás lo escribe uno solo.
+
+**Acentos de cada paso.** No hay un editor por fila: se usa el editor de **ACENTOS** que ya está en el panel de BPM. Por defecto sigue al compás que está sonando. **Haz clic en una fila para fijarla**: queda resaltada, el editor dice `PASO 3` y a partir de ahí muestra y edita *ese* compás aunque esté sonando otro. Clic de nuevo en la fila para soltarla. Así puedes agrupar el 6/8 en 3+3 sin tener que atinarle justo al momento en que ese paso suena.
+
+**Presets.** Debajo de la lista puedes guardar la secuencia con un nombre y recuperarla con un clic. El botón `✕` de cada preset lo borra. Guardar con un nombre que ya existe lo reemplaza.
+
+Ambas pestañas siguen corriendo aunque colapses el panel o cambies de pestaña; la barra colapsada muestra el tiempo restante o la secuencia activa.
 
 ---
 
 ## Guardar configuraciones
 
-La app **guarda automáticamente** el estado de ambos metrónomos (BPM, compás, subdivisión, sonidos, volumen, mute) y los parámetros de cada modo en el almacenamiento local del programa, bajo la clave `dualpulse-settings-v1`. No hay botones de guardar/cargar manuales ni presets nombrados: al volver a abrir la app, retoma donde quedaste.
+La app **guarda automáticamente** el estado de ambos metrónomos (BPM, compás, subdivisión, sonidos, volumen, mute) y los parámetros de cada modo en el almacenamiento local del programa, bajo la clave `dualpulse-settings-v1`. Al volver a abrir la app, retoma donde quedaste. El estado guardado incluye la secuencia, la cuenta de entrada y los presets de secuencia.
+
+Lo único con guardado manual son los **presets de secuencia** (pestaña SECUENCIA): esos sí se guardan con un nombre que eliges tú.
 
 El estado en vivo (si está sonando, en qué tiempo va) nunca se guarda — siempre arranca detenida.
 

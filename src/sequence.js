@@ -116,3 +116,32 @@ export function pulseAt(index, steps, bpm = 120) {
 // Resumen de una línea para la barra colapsada: "2×4/4 · 3×3/4 · 3×6/8".
 export const sequenceLabel = (steps) =>
   normalizeSequence(steps).map((s) => `${s.measures}×${s.num}/${s.den}`).join(" · ");
+
+// ── presets ──────────────────────────────────────────────────────────────────
+// Secuencias guardadas con nombre. Se normalizan igual que todo lo demás, para
+// que un preset guardado por una versión vieja nunca llegue roto al scheduler.
+export const MAX_PRESETS = 24;
+
+export function normalizePresets(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const p of list) {
+    const name = String(p?.name ?? "").trim().slice(0, 40);
+    if (!name || !Array.isArray(p?.steps) || !p.steps.length) continue;
+    if (out.some((q) => q.name.toLowerCase() === name.toLowerCase())) continue;
+    out.push({ name, steps: normalizeSequence(p.steps) });
+    if (out.length >= MAX_PRESETS) break;
+  }
+  return out;
+}
+
+// Guardar con un nombre que ya existe lo pisa, en vez de duplicarlo.
+export function savePreset(list, name, steps) {
+  const clean = String(name ?? "").trim().slice(0, 40);
+  if (!clean) return normalizePresets(list);
+  const rest = normalizePresets(list).filter((p) => p.name.toLowerCase() !== clean.toLowerCase());
+  return normalizePresets([{ name: clean, steps }, ...rest]);
+}
+
+export const deletePreset = (list, name) =>
+  normalizePresets(list).filter((p) => p.name.toLowerCase() !== String(name ?? "").trim().toLowerCase());

@@ -25,9 +25,14 @@ El manual de uso completo está en **[MANUAL.md](MANUAL.md)**.
 | **DUAL TEMPO** | Politempo | BPM completamente independientes; se muestra el punto de convergencia |
 | **DUAL POLY** | Polimetría | Mismo BPM, ciclos de distinta longitud; los "1" se desfasan y reconvergen cada MCM |
 
-Además: subdivisiones, acentos aditivos, tap tempo, temporizador de práctica, práctica
-progresiva, visualizador circular con dos estilos, y **exportación del patrón a un archivo
-`.mid`** exacto por construcción.
+Sobre cualquiera de los tres funciona la **SECUENCIA de compases**: una lista de pasos del
+tipo `2×4/4 · 3×3/4 · 3×6/8` que corre en loop, con pasos apagables para practicar *gap
+click* y acentos aditivos por paso.
+
+Además: subdivisiones hasta 21 con sus propios acentos, acentos aditivos, tap tempo, práctica
+progresiva con cambio de tempo continuo (sin cortes), cuenta de entrada, presets de secuencia,
+visualizador circular con dos estilos, y **exportación del patrón a un archivo `.mid`** exacto
+por construcción, con los cambios de compás de la secuencia incluidos.
 
 ## Cómo usarlo
 
@@ -42,7 +47,7 @@ frente a la web es que funciona sin conexión y queda como programa propio.
 ```bash
 npm install
 npm run dev              # servidor de desarrollo
-npm test                 # 101 tests (vitest)
+npm test                 # 131 tests (vitest)
 npm run electron:preview # la app de escritorio, sin empaquetar
 npm run electron:build   # genera el instalador en release/
 ```
@@ -53,6 +58,7 @@ npm run electron:build   # genera el instalador en release/
 src/
   DualMetronome.jsx   Componente principal: UI, scheduler de audio, los tres modos
   phase.js            Matemática pura de fase y ciclos (MCM, razones, acentos, euclídeo)
+  sequence.js         Secuencia de compases: pasos, ciclo, qué toca en el pulso N, presets
   midiExport.js       Escritura de Standard MIDI Files formato 1
   settings.js         Persistencia en localStorage
 electron/
@@ -61,8 +67,8 @@ build/
   icon.ico / icon.png Icono de la aplicación y del instalador
 ```
 
-La lógica que se puede probar sin navegador vive en `phase.js`, `midiExport.js` y
-`settings.js`, cada uno con su archivo de tests al lado.
+La lógica que se puede probar sin navegador vive en `phase.js`, `sequence.js`,
+`midiExport.js` y `settings.js`, cada uno con su archivo de tests al lado.
 
 ## Detalles técnicos
 
