@@ -203,7 +203,11 @@ El botón de **flecha hacia abajo** (arriba a la izquierda) baja un archivo `.mi
 
 **Un detalle al importar:** si tu programa tiene activada la cuantización automática al importar MIDI, desactívala. Si no, puede "corregir" los quintillos y septillos y arruinar justamente lo que hace especial al patrón. Lo mismo con la vista de partitura: puede dibujarlos raro aunque las posiciones estén bien. Mira el editor de piano roll.
 
-**Con la secuencia encendida se exporta la secuencia**, no el modo. El archivo trae un cambio de compás real en cada paso —`4/4`, `3/4`, `6/8`, con su denominador correcto— así que el programa lo lee con la métrica que corresponde en cada tramo, no todo forzado a `x/4`. Los pasos apagados salen como compases vacíos, que es justamente lo que hay que estudiar. Es una sola pista, porque la secuencia maneja un solo metrónomo.
+**Con la secuencia encendida se exporta la secuencia**, no el modo. El archivo trae un cambio de compás real en cada paso —`4/4`, `3/4`, `6/8`, con su denominador correcto— así que el programa lo lee con la métrica que corresponde en cada tramo, no todo forzado a `x/4`. Los pasos apagados salen como compases vacíos, que es justamente lo que hay que estudiar.
+
+Si tienes las dos secuencias encendidas, el archivo trae **una pista por voz**, cada una con su BPM escrito en el nombre de la pista.
+
+**Una limitación que conviene saber:** un archivo MIDI tiene **una sola pista de compases**, así que no puede llevar dos métricas distintas a la vez. Cuando exportas dos secuencias, los cambios de compás que quedan escritos son los de A. La voz B suena igual de bien y en el tempo correcto —sus notas van en posiciones exactas— pero la regla del programa va a mostrar la métrica de A. Si necesitas las dos con su propia regla, exporta una y después la otra.
 
 **Cuánto dura cada archivo:** 8 ciclos en DUAL SINC, hasta 4 vueltas completas del ciclo largo en DUAL POLY (menos si el ciclo es muy largo, como 11 contra 13), y unos 16 compases en DUAL TEMPO. Si necesitas más, lo repites en loop dentro de tu programa.
 
@@ -221,15 +225,18 @@ El cambio de tempo es **continuo**: el metrónomo no se corta ni vuelve al pulso
 
 **SECUENCIA** — una lista de pasos que se repite en loop. Cada paso es *"N compases de X/Y"*: por ejemplo **2×4/4 · 3×3/4 · 3×6/8**, que es lo que suena en muchos temas con cambio de métrica.
 
+**Cada metrónomo tiene su propia secuencia.** En DUAL TEMPO ves dos columnas, A y B, cada una con su lista y su botón de inicio. Puedes poner A en 5/4 a 90 y B en 7/8 a 120 y que corran a la vez, cada uno con su métrica y su tempo. Eso es lo que permite armar compases cruzados de verdad.
+
+La columna de B aparece **solo en DUAL TEMPO**, porque es el único modo con BPM independientes por voz: en DUAL SINC y DUAL POLY el tempo de B lo fija la relación del modo, así que una segunda secuencia no sería independiente. En esos dos modos ves una sola columna, la de A.
+
 - El **punto de la izquierda** apaga un paso. Un paso apagado **ocupa sus compases pero no suena**: eso es el *gap click*, el ejercicio de tocar sin referencia para desarrollar tiempo interno. Ejemplo: `2×4/4` sonando y `2×4/4` apagado te da dos compases con click y dos sin.
 - Los puntos de la derecha muestran en qué compás del paso vas.
 - **El BPM siempre se refiere a la negra.** En un compás de `x/8` el click va en la corchea, o sea al doble de velocidad que en `x/4` al mismo BPM. Lo que cambia al cambiar de compás no es la velocidad del pulso, sino cuántos pulsos entran antes del acento. Es lo que se lee en una partitura.
-- **La secuencia maneja un solo metrónomo (A).** El otro sigue con el modo que tengas puesto y hace de pulso de referencia. Para medir una desviación hace falta algo estable contra qué medirla; dos capas cambiando de compás a la vez no dejan referencia.
-- Cambiar de modo apaga la secuencia: el compás lo escribe uno solo.
+- Cambiar de modo apaga las dos secuencias: el compás de cada voz lo escribe uno solo a la vez.
 
-**Acentos de cada paso.** No hay un editor por fila: se usa el editor de **ACENTOS** que ya está en el panel de BPM. Por defecto sigue al compás que está sonando. **Haz clic en una fila para fijarla**: queda resaltada, el editor dice `PASO 3` y a partir de ahí muestra y edita *ese* compás aunque esté sonando otro. Clic de nuevo en la fila para soltarla. Así puedes agrupar el 6/8 en 3+3 sin tener que atinarle justo al momento en que ese paso suena.
+**Acentos de cada paso.** No hay un editor por fila: se usa el editor de **ACENTOS**, que en DUAL SINC y DUAL POLY está en el panel de BPM y en DUAL TEMPO aparece dentro del panel de cada metrónomo cuando esa voz tiene secuencia encendida. Por defecto sigue al compás que está sonando. **Haz clic en una fila para fijarla**: queda resaltada, el editor dice `PASO 3` y a partir de ahí muestra y edita *ese* compás aunque esté sonando otro. Clic de nuevo en la fila para soltarla. Así puedes agrupar el 6/8 en 3+3 sin tener que atinarle justo al momento en que ese paso suena.
 
-**Presets.** Debajo de la lista puedes guardar la secuencia con un nombre y recuperarla con un clic. El botón `✕` de cada preset lo borra. Guardar con un nombre que ya existe lo reemplaza.
+**Presets.** Debajo de las listas puedes guardar una secuencia con un nombre y recuperarla con un clic. En DUAL TEMPO, los botones **A** y **B** de esa fila eligen a qué voz se guarda y en cuál se carga, así que el mismo preset sirve para las dos. El botón `✕` de cada preset lo borra. Guardar con un nombre que ya existe lo reemplaza.
 
 Ambas pestañas siguen corriendo aunque colapses el panel o cambies de pestaña; la barra colapsada muestra el tiempo restante o la secuencia activa.
 
@@ -247,10 +254,11 @@ El estado en vivo (si está sonando, en qué tiempo va) nunca se guarda — siem
 
 ## Visualizador
 
-El visualizador circular central se puede alternar entre dos estilos con el botón de arriba a la izquierda:
+El visualizador central se puede alternar entre tres estilos con el botón de arriba a la izquierda, que va rotando entre ellos:
 
 - **Aros** — dos arcos concéntricos (A por fuera, B por dentro) que se llenan al ritmo de cada ciclo, con una onda expansiva en cada "1".
 - **Collar** (*necklace*, por defecto) — un polígono regular de N vértices por metrónomo, con el vértice del "1" marcado. Es la forma estándar de representar ritmos geométricamente en el análisis rítmico comparado (la *necklace notation* de Godfried Toussaint).
+- **Árbol** — la métrica dibujada como un árbol: la raíz es el compás entero, el nivel del medio son los grupos de la agrupación aditiva, y las hojas son los pulsos. A crece hacia arriba y B hacia abajo, las dos apoyadas sobre una misma barra de tiempo, así que se ve dónde coinciden los pulsos de las dos voces y dónde no. Un camino verde marca, en cada voz, la rama que está sonando. Con la secuencia encendida el árbol sigue solo el compás de cada paso.
 
 En DUAL TEMPO y DUAL POLY aparece además el **aro de sincronización de fase**: un arco ámbar externo que muestra la fracción del ciclo de re-alineación ya recorrida, con destello blanco en el instante exacto de la sincronía.
 
