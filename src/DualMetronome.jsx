@@ -1783,11 +1783,14 @@ export default function DualMetronome() {
     const { bytes, fileName } = exportForState({
       mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB,
       metA: metARef.current, metB: metBRef.current,
+      // con la secuencia encendida, lo que se exporta es la secuencia
+      seqOn, seqSteps,
+      seqBpm: (seqTargetRef.current === "B" ? metBRef.current : metARef.current).bpm,
     });
     downloadMidi(bytes, fileName);
     setExportFlash(true);
     setTimeout(() => setExportFlash(false), 900);
-  }, [mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB]);
+  }, [mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB, seqOn, seqSteps]);
 
   // ── render ─────────────────────────────────────────────────────────────────
   const isMetrica    = mode === "metrica";

@@ -338,3 +338,75 @@ describe("acentos aditivos en el archivo exportado", () => {
     expect(spec.tracks[1].name).not.toContain("+");
   });
 });
+
+// ── SECUENCIA ────────────────────────────────────────────────────────────────
+describe('exportación de la secuencia de compases', () => {
+  const seq = [
+    { measures: 2, num: 4, den: 4 },
+    { measures: 3, num: 3, den: 4 },
+    { measures: 3, num: 6, den: 8, groups: [3, 3] },
+  ];
+  const state = { seqOn: true, seqSteps: seq, seqBpm: 90 };
+
+  it('la secuencia manda sobre el modo', () => {
+    const spec = specForState({ ...state, mode: 'metrica', relBase: 4, relDeriv: 5, relBpmBase: 120 });
+    expect(spec.fileName).toContain('secuencia');
+    expect(spec.bpm).toBe(90);
+    expect(spec.tracks).toHaveLength(1); // la secuencia maneja un solo metrónomo
+  });
+
+  it('escribe un cambio de compás por cada paso, con el denominador real', () => {
+    const spec = specForState(state);
+    const unaVuelta = spec.timeSigs.slice(0, 3);
+    expect(unaVuelta.map((s) => [s.num, s.den])).toEqual([[4, 4], [3, 4], [6, 8]]);
+    expect(unaVuelta[0].tick).toBe(0);
+  });
+
+  it('el BPM manda sobre la negra: en x/8 el pulso dura la mitad', () => {
+    const spec = specForState(state);
+    const { ppq, timeSigs } = spec;
+    // 2 compases de 4/4 = 8 negras, después 3 de 3/4 = 9 negras
+    expect(timeSigs[1].tick).toBe(8 * ppq);
+    expect(timeSigs[2].tick).toBe((8 + 9) * ppq);
+    // 3 compases de 6/8 = 18 corcheas = 9 negras
+    expect(spec.totalTicks % ppq).toBe(0);
+  });
+
+  it('el PPQ divide exacto a todos los denominadores, sin redondeo', () => {
+    const spec = specForState(state);
+    expect(spec.exact).toBe(true);
+    for (const s of seq) expect((spec.ppq * 4) % s.den).toBe(0);
+  });
+
+  it('acentúa el 1, los arranques de grupo y el resto con tres velocities', () => {
+    const spec = specForState(state);
+    const vels = new Set(spec.tracks[0].events.map((e) => e.vel));
+    expect(vels).toEqual(new Set([VEL_ACCENT, VEL_SUB, VEL_NORMAL]));
+    // el 6/8 agrupado 3+3 acentúa el pulso 3 de cada compás
+    const ppq = spec.ppq;
+    const inicio6x8 = spec.timeSigs[2].tick;
+    const pulso = (ppq * 4) / 8;
+    const enTick = (t) => spec.tracks[0].events.find((e) => e.tick === t);
+    expect(enTick(inicio6x8).vel).toBe(VEL_ACCENT);
+    expect(enTick(inicio6x8 + 3 * pulso).vel).toBe(VEL_SUB);
+    expect(enTick(inicio6x8 + pulso).vel).toBe(VEL_NORMAL);
+  });
+
+  it('un paso en silencio ocupa sus compases pero no escribe notas (gap click)', () => {
+    const conSilencio = [{ measures: 1, num: 4, den: 4 }, { measures: 1, num: 4, den: 4, muted: true }];
+    const spec = specForState({ seqOn: true, seqSteps: conSilencio, seqBpm: 120 });
+    const porVuelta = spec.totalTicks / spec.ppq;     // 2 compases de 4/4 por vuelta
+    expect(porVuelta % 8).toBe(0);
+    // ninguna nota cae dentro del segundo compás de ninguna vuelta
+    const dentroDelSilencio = spec.tracks[0].events
+      .filter((e) => Math.floor(e.tick / spec.ppq) % 8 >= 4);
+    expect(dentroDelSilencio).toHaveLength(0);
+  });
+
+  it('genera un archivo válido, con cabecera y una pista por chunk', () => {
+    const { bytes, fileName } = exportForState(state);
+    expect(fileName).toMatch(/^dualpulse-secuencia-.*90bpm\.mid$/);
+    expect([...bytes.slice(0, 4)]).toEqual([...'MThd'].map((c) => c.charCodeAt(0)));
+    expect(bytes[11]).toBe(2); // tempo + 1 pista
+  });
+});

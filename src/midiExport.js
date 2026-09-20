@@ -10,6 +10,7 @@
 // denominadores que hagan falta y elige un PPQ múltiplo de eso.
 
 import { accentSet, effectiveGroups } from './phase.js';
+import { normalizeSequence, sequenceLabel } from './sequence.js';
 
 export const MAX_PPQ    = 32767; // límite del campo "division" en la cabecera SMF
 export const TARGET_PPQ = 1920;  // resolución a la que se apunta si los divisores lo permiten
@@ -81,39 +82,65 @@ function buildTrack(events, name) {
  * @param {object}   o
  * @param {number}   o.bpm         negras por minuto de la pista de tempo
  * @param {number}   o.ppq         ticks por negra (ver pickPpq)
- * @param {number}   o.timeSigNum  numerador del compás (denominador siempre 4)
+ * @param {number}   o.timeSigNum  numerador del compás inicial (denominador 4)
+ * @param {Array}    [o.timeSigs]  cambios de compás: [{ tick, num, den }]. Lo usa
+ *   la secuencia, donde el compás cambia a mitad del archivo. Si no viene, se
+ *   arma uno solo en el tick 0 a partir de `timeSigNum`.
  * @param {number}   o.totalTicks  largo total del archivo
  * @param {Array}    o.tracks      [{ name, channel, note, stepTicks, count, accents, cycleLen }]
  *   `accents` es el conjunto de índices acentuados dentro del ciclo y `cycleLen`
  *   el largo del ciclo. Un número suelto no alcanza: una métrica aditiva acentúa
  *   {0,3,6} sobre 8, no "cada 8".
+ *   Una pista puede traer en su lugar `events: [{ tick, vel }]` ya resueltos,
+ *   para patrones donde el paso y el acento cambian de compás a compás.
  * @returns {Uint8Array}
  */
-export function buildMidiFile({ bpm, ppq, timeSigNum = 4, totalTicks, tracks }) {
+export function buildMidiFile({ bpm, ppq, timeSigNum = 4, timeSigs, totalTicks, tracks }) {
   const usPerQuarter = Math.round(60000000 / bpm);
   // duración de nota corta y fija, pero nunca más larga que medio paso ni menor a 1 tick
-  const minStep = Math.min(...tracks.map((t) => t.stepTicks));
+  const pasos = tracks.map((t) => t.stepTicks).filter((x) => Number.isFinite(x) && x > 0);
+  const minStep = pasos.length ? Math.min(...pasos) : ppq;
   const noteLen = Math.max(1, Math.min(Math.round(ppq / 8), Math.floor(minStep / 2)));
 
-  const tempoTrack = [
-    ...metaText(0x03, 'tempo'),
-    ...vlq(0), 0xff, 0x58, 0x04, timeSigNum, 0x02, 0x18, 0x08,
-    ...vlq(0), 0xff, 0x51, 0x03,
-    (usPerQuarter >>> 16) & 255, (usPerQuarter >>> 8) & 255, usPerQuarter & 255,
-    ...vlq(totalTicks), 0xff, 0x2f, 0x00,
-  ];
+  // El byte del denominador es su log2: 4 -> 2, 8 -> 3, 16 -> 4.
+  const denByte = (den) => Math.round(Math.log2(Math.max(1, Math.round(den) || 4)));
+  const sigs = (Array.isArray(timeSigs) && timeSigs.length ? timeSigs : [{ tick: 0, num: timeSigNum, den: 4 }])
+    .map((s) => ({
+      tick: Math.max(0, Math.round(s.tick || 0)),
+      num:  Math.max(1, Math.round(s.num) || 4),
+      den:  Math.round(s.den) || 4,
+    }))
+    .sort((a, b) => a.tick - b.tick);
+  sigs[0].tick = 0; // el archivo siempre empieza con un compás declarado
+
+  const tempoTrack = [...metaText(0x03, 'tempo')];
+  tempoTrack.push(...vlq(0), 0xff, 0x58, 0x04, sigs[0].num, denByte(sigs[0].den), 0x18, 0x08);
+  tempoTrack.push(...vlq(0), 0xff, 0x51, 0x03,
+    (usPerQuarter >>> 16) & 255, (usPerQuarter >>> 8) & 255, usPerQuarter & 255);
+  let lastSigTick = 0;
+  for (const s of sigs.slice(1)) {
+    tempoTrack.push(...vlq(s.tick - lastSigTick), 0xff, 0x58, 0x04, s.num, denByte(s.den), 0x18, 0x08);
+    lastSigTick = s.tick;
+  }
+  tempoTrack.push(...vlq(Math.max(0, totalTicks - lastSigTick)), 0xff, 0x2f, 0x00);
 
   const chunks = [chunk('MTrk', tempoTrack)];
   for (const t of tracks) {
     const ev = [];
     const cycleLen = Math.max(1, Math.round(t.cycleLen || 1));
     const accents = t.accents instanceof Set ? t.accents : new Set([0]);
-    for (let i = 0; i < t.count; i++) {
-      const tick = Math.round(i * t.stepTicks);
-      const k = i % cycleLen;
-      const vel = k === 0 ? VEL_ACCENT : accents.has(k) ? VEL_SUB : VEL_NORMAL;
-      ev.push({ tick,           order: 1, data: [0x90 | t.channel, t.note, vel] });
-      ev.push({ tick: tick + noteLen, order: 0, data: [0x80 | t.channel, t.note, 0] });
+    const notas = Array.isArray(t.events)
+      ? t.events.map((e) => ({ tick: Math.round(e.tick), vel: e.vel }))
+      : Array.from({ length: t.count }, (_, i) => {
+          const k = i % cycleLen;
+          return {
+            tick: Math.round(i * t.stepTicks),
+            vel: k === 0 ? VEL_ACCENT : accents.has(k) ? VEL_SUB : VEL_NORMAL,
+          };
+        });
+    for (const n of notas) {
+      ev.push({ tick: n.tick,           order: 1, data: [0x90 | t.channel, t.note, n.vel] });
+      ev.push({ tick: n.tick + noteLen, order: 0, data: [0x80 | t.channel, t.note, 0] });
     }
     chunks.push(buildTrack(ev, t.name));
   }
@@ -152,9 +179,66 @@ export function exportForState(state) {
 }
 
 export function specForState(state) {
+  // La secuencia manda sobre el modo: cuando está encendida, es lo que suena.
+  if (state.seqOn && state.seqSteps)  return specSecuencia(state);
   if (state.mode === 'metrica')    return specMetrica(state);
   if (state.mode === 'polimetria') return specPolimetria(state);
   return specLibre(state);
+}
+
+// SECUENCIA: una lista de pasos que cambia de compás a mitad del archivo, así
+// que es el único spec que necesita varios metas 0x58 y eventos con tick y
+// velocity resueltos uno por uno (el paso y el acento cambian en cada paso).
+// El BPM siempre manda sobre la negra: un pulso dura ppq*4/den ticks, o sea que
+// en 6/8 el click va en la corchea, al doble de velocidad que en 4/4.
+// Un paso en silencio no escribe notas pero sí ocupa sus compases: así el gap
+// click queda exportado como compases vacíos, que es lo que hay que estudiar.
+function specSecuencia({ seqSteps, seqBpm, metA = {} }) {
+  const steps = normalizeSequence(seqSteps);
+  const bpm = Math.max(1, Math.round(seqBpm || metA.bpm || 120));
+  // ticks por pulso = ppq * 4/den, así que el PPQ tiene que ser múltiplo de
+  // todos esos divisores para que no haya redondeo en ningún compás
+  const { ppq, exact } = pickPpq(steps.map((s) => frac(4, s.den).d));
+
+  const cycleQuarters = steps.reduce((q, s) => q + s.measures * s.num * (4 / s.den), 0);
+  const cycles = Math.max(1, Math.min(8, Math.floor(MAX_QUARTERS / Math.max(1, cycleQuarters))));
+
+  const events = [], timeSigs = [];
+  let tick = 0, lastNum = null, lastDen = null;
+  for (let c = 0; c < cycles; c++) {
+    for (const s of steps) {
+      const accents = accentSet(s.groups);
+      const stepTicks = (ppq * 4) / s.den;
+      if (s.num !== lastNum || s.den !== lastDen) {
+        timeSigs.push({ tick, num: s.num, den: s.den });
+        lastNum = s.num; lastDen = s.den;
+      }
+      for (let m = 0; m < s.measures; m++) {
+        for (let p = 0; p < s.num; p++) {
+          if (!s.muted) {
+            events.push({
+              tick,
+              vel: p === 0 ? VEL_ACCENT : accents.has(p) ? VEL_SUB : VEL_NORMAL,
+            });
+          }
+          tick += stepTicks;
+        }
+      }
+    }
+  }
+
+  const slug = steps.map((s) => `${s.measures}x${s.num}-${s.den}`).join('_').slice(0, 60);
+  return {
+    bpm, ppq, exact, timeSigs,
+    totalTicks: Math.round(tick),
+    fileName: `dualpulse-secuencia-${slug}-${bpm}bpm.mid`,
+    tracks: [{
+      name: `Secuencia - ${sequenceLabel(steps)} (nota ${NOTE_A})`,
+      channel: 0, note: NOTE_A,
+      stepTicks: Math.min(...steps.map((s) => (ppq * 4) / s.den)),
+      events,
+    }],
+  };
 }
 
 // DUAL SINC: A y B abarcan el mismo ciclo. A pone `base` pulsos, B pone `deriv`.
