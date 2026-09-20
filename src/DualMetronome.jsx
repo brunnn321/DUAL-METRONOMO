@@ -8,6 +8,8 @@ import { pulseAt, sequenceLabel, normalizeSequence, normalizeStep, normalizePres
 import { exportForState, downloadMidi } from "./midiExport.js";
 // geometría del visualizador de árbol — cálculo puro, testeable
 import { treeLayout, activePath, leafRadius } from "./tree.js";
+// fichas de movimiento y el búfer que sincroniza el dibujo con el audio
+import { DUR, EASE, salida, decay, crearBuffer, anotarPulso, limpiarBuffer, pulsoEn, movimientoReducido } from "./motion.js";
 
 // ─── constants ────────────────────────────────────────────────────────────────
 const beatsPerMeasure = (sig) => parseInt(sig.split("/")[0]);
@@ -192,6 +194,8 @@ function CircularVisualizer({
   // transform (for the beat pulse), which creates a containing block for
   // position:fixed children, so the toggle button can't live in here
   vizStyle, fullscreen,
+  // el árbol dibuja desde el reloj del audio, así que necesita el contexto y los búferes
+  ctxRef, pulsosA, pulsosB,
   // phase-sync cycle ring (Dual Libre / Dual Poly only) — real pulse counts,
   // never a wall-clock timer. Two targets/counts because Libre's A and B
   // realign on different pulse counts of their own (though at the same instant).
@@ -304,7 +308,8 @@ function CircularVisualizer({
   // que por eso no se pueden mover debajo de este return.
   if (vizStyle === "tree") {
     return (
-      <TreeVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} fullscreen={fullscreen} />
+      <TreeVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} fullscreen={fullscreen}
+        ctxRef={ctxRef} pulsosA={pulsosA} pulsosB={pulsosB} />
     );
   }
 
@@ -415,67 +420,154 @@ function CircularVisualizer({
 // B caen sobre la misma barra, y se ve dónde coinciden y dónde no. Con la
 // secuencia encendida el compás cambia paso a paso y el árbol lo sigue solo,
 // porque lee timeSig y accentGroups, que el scheduler ya mantiene al día.
-function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen }) {
+// Dibuja leyendo ctx.currentTime, el MISMO reloj con el que suena, y escribe
+// directo en los nodos del SVG por ref. Por eso no hay un re-render de React
+// por pulso: a 21 pulsos por compás y dos voces, eso era lo que producía el
+// tirón. Y por eso la imagen no se despega del audio: no hay dos relojes.
+//
+// Todo lo que se mueve lo hace con transform y opacity, que el navegador puede
+// componer sin volver a pintar. Nada de `r`, `stroke-width` ni `drop-shadow`
+// por elemento, que era lo que había antes.
+function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pulsosA, pulsosB }) {
   const S = 680, H = 470;
   const X0 = 60, X1 = 620, BAR = 235;
   const CA = "#ff6b4a", CB = "#4ad9ff", HOT = "#4aff9a";
 
-  const voz = (met, running, arriba) => {
+  const ramaA = useRef(null), ramaB = useRef(null);
+  const hojasA = useRef([]),  hojasB = useRef([]);
+  const haloA = useRef(null), haloB = useRef(null);
+  const barrido = useRef(null);
+
+  const plan = (met) => {
     const total  = Math.max(1, beatsPerMeasure(met.timeSig));
     const layout = treeLayout(total, met.accentGroups, { x0: X0, x1: X1 });
-    const r      = leafRadius(total, X0, X1);
-    const color  = arriba ? CA : CB;
-    const dir    = arriba ? -1 : 1;                  // hacia dónde crece
-    const yHoja  = BAR + dir * 12;
-    const yGrupo = BAR + dir * 105;
-    const yRaiz  = BAR + dir * 175;
-    const path   = running ? activePath(layout, met.beat) : null;
+    return { total, layout, r: leafRadius(total, X0, X1) };
+  };
+  const pa = plan(metA), pb = plan(metB);
+  // El scheduler reescribe accentGroups en cada pulso con un array NUEVO, así
+  // que si el bucle dependiera de él se desmontaría y volvería a montar en cada
+  // pulso, y nunca llegaría a dibujar. El plan viaja por un ref que se refresca
+  // en cada render, y el bucle vive mientras haya algo sonando.
+  const planRef = useRef({ pa, pb });
+  planRef.current = { pa, pb };
+
+  // ── el bucle de dibujo ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (movimientoReducido()) return;           // regla `reduced-motion`
+    if (!runningA && !runningB) return;
+    let raf;
+    const vida = DUR.slow / 1000;
+
+    const pintarVoz = (buf, plan_, hojas, halo, rama, arriba) => {
+      const ctx = ctxRef?.current;
+      if (!ctx || ctx.state === "closed") return;
+      const hit = pulsoEn(buf.current, ctx.currentTime);
+      const brillo = hit ? decay(hit.desde, vida) : 0;
+      const activo = hit && brillo > 0 ? hit.pulso.idx : -1;
+
+      for (let i = 0; i < hojas.current.length; i++) {
+        const el = hojas.current[i];
+        if (!el) continue;
+        const on = i === activo;
+        // escala en vez de radio: el radio obliga a repintar, la escala no
+        const k = on ? 1 + brillo * 0.9 : 1;
+        el.setAttribute("transform", `translate(${el.dataset.cx} ${el.dataset.cy}) scale(${k.toFixed(3)}) translate(-${el.dataset.cx} -${el.dataset.cy})`);
+        el.setAttribute("opacity", on ? 1 : 0.55);
+        if (on) el.setAttribute("fill", HOT);
+        else el.setAttribute("fill", el.dataset.base);
+      }
+
+      if (halo.current) {
+        const h = halo.current;
+        if (activo >= 0) {
+          const p = plan_.layout.leaves[activo];
+          h.setAttribute("cx", p.x);
+          h.setAttribute("cy", BAR + (arriba ? -12 : 12));
+          // el halo crece mientras se apaga: es la onda del golpe
+          h.setAttribute("transform", `translate(${p.x} ${BAR + (arriba ? -12 : 12)}) scale(${(1 + (1 - brillo) * 2.4).toFixed(3)}) translate(${-p.x} ${-(BAR + (arriba ? -12 : 12))})`);
+          h.setAttribute("opacity", (brillo * 0.5).toFixed(3));
+        } else {
+          h.setAttribute("opacity", 0);
+        }
+      }
+
+      if (rama.current) {
+        rama.current.setAttribute("opacity", brillo.toFixed(3));
+        if (activo >= 0) {
+          const path = activePath(plan_.layout, activo);
+          if (path) {
+            const dir = arriba ? -1 : 1;
+            const yH = BAR + dir * 12, yG = BAR + dir * 105, yR = BAR + dir * 175;
+            rama.current.setAttribute("d",
+              `M ${path.rootX} ${yR + dir * 18} L ${path.groupX} ${yG - dir * 14} M ${path.groupX} ${yG + dir * 14} L ${path.leafX} ${yH}`);
+          }
+        }
+      }
+    };
+
+    const tick = () => {
+      if (!document.hidden) {
+        if (runningA) pintarVoz(pulsosA, planRef.current.pa, hojasA, haloA, ramaA, true);
+        if (runningB) pintarVoz(pulsosB, planRef.current.pb, hojasB, haloB, ramaB, false);
+        const ctx = ctxRef?.current;
+        if (barrido.current && ctx && ctx.state !== "closed") {
+          const hit = pulsoEn(pulsosA.current, ctx.currentTime);
+          const f = hit ? Math.min(1, hit.pulso.idx / Math.max(1, hit.pulso.total)) : 0;
+          barrido.current.setAttribute("opacity", (0.25 + f * 0.35).toFixed(3));
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runningA, runningB]);
+
+  const voz = (met, p, arriba, hojas, halo, rama) => {
+    const { layout, r } = p;
+    const color = arriba ? CA : CB;
+    const dir   = arriba ? -1 : 1;
+    const yHoja = BAR + dir * 12, yGrupo = BAR + dir * 105, yRaiz = BAR + dir * 175;
+    hojas.current = [];
 
     return (
       <g>
         {layout.groups.map((g, i) => (
           <line key={`gr${i}`} x1={layout.rootX} y1={yRaiz + dir * 18} x2={g.x} y2={yGrupo - dir * 14}
-            stroke={color} strokeWidth={1.5} opacity={0.5} />
+            stroke={color} strokeWidth={1.5} opacity={0.35} />
         ))}
         {layout.groups.map((g, i) =>
           layout.leaves.slice(g.from, g.to + 1).map((h) => (
             <line key={`hj${i}-${h.i}`} x1={g.x} y1={yGrupo + dir * 14} x2={h.x} y2={yHoja}
-              stroke={color} strokeWidth={1.5} opacity={0.5} />
+              stroke={color} strokeWidth={1.5} opacity={0.35} />
           ))
         )}
 
-        {path && (
-          <>
-            <path d={`M ${path.rootX} ${yRaiz + dir * 18} L ${path.groupX} ${yGrupo - dir * 14}`}
-              fill="none" stroke={HOT} strokeWidth={3.5} strokeLinecap="round"
-              style={{ filter:`drop-shadow(0 0 5px ${HOT})` }} />
-            <path d={`M ${path.groupX} ${yGrupo + dir * 14} L ${path.leafX} ${yHoja}`}
-              fill="none" stroke={HOT} strokeWidth={3.5} strokeLinecap="round"
-              style={{ filter:`drop-shadow(0 0 5px ${HOT})` }} />
-          </>
-        )}
+        {/* la onda del golpe: un círculo que crece mientras se apaga */}
+        <circle ref={halo} cx={layout.rootX} cy={yHoja} r={r * 2.2} fill="none"
+          stroke={HOT} strokeWidth={2} opacity={0} style={{ willChange:"transform, opacity" }} />
+
+        {/* la rama que suena, encendida por el bucle */}
+        <path ref={rama} d="" fill="none" stroke={HOT} strokeWidth={3.5}
+          strokeLinecap="round" opacity={0} style={{ willChange:"opacity" }} />
 
         {layout.leaves.map((h) => {
-          const on = running && met.beat === h.i;
           const abre = layout.groups.some((g) => g.from === h.i);
+          const base = abre ? color : `${color}88`;
           return (
-            <circle key={h.i} cx={h.x} cy={yHoja} r={on ? r + 3 : r}
-              fill={on ? HOT : abre ? color : `${color}88`}
-              stroke={on ? "#fff" : "none"} strokeWidth={on ? 2 : 0}
-              style={{ filter: on ? `drop-shadow(0 0 12px ${HOT})` : "none" }} />
+            <circle key={h.i} ref={(el) => { hojas.current[h.i] = el; }}
+              cx={h.x} cy={yHoja} r={r} fill={base} opacity={0.55}
+              data-cx={h.x} data-cy={yHoja} data-base={base} />
           );
         })}
 
-        {layout.groups.map((g, i) => {
-          const on = path?.groupIdx === i;
-          return (
-            <g key={`n${i}`}>
-              <circle cx={g.x} cy={yGrupo} r={14} fill={on ? HOT : "#1e2028"} stroke={on ? HOT : color} strokeWidth={2} />
-              <text x={g.x} y={yGrupo + 4} textAnchor="middle" fontFamily="'JetBrains Mono',monospace"
-                fontSize={12} fontWeight={700} fill={on ? "#15171c" : color}>{g.size}</text>
-            </g>
-          );
-        })}
+        {layout.groups.map((g, i) => (
+          <g key={`n${i}`}>
+            <circle cx={g.x} cy={yGrupo} r={14} fill="#1e2028" stroke={color} strokeWidth={2} />
+            <text x={g.x} y={yGrupo + 4} textAnchor="middle" fontFamily="'JetBrains Mono',monospace"
+              fontSize={12} fontWeight={700} fill={color}>{g.size}</text>
+          </g>
+        ))}
 
         <circle cx={layout.rootX} cy={yRaiz} r={18} fill="#1e2028" stroke={color} strokeWidth={2.5} />
         <text x={layout.rootX} y={yRaiz + 5} textAnchor="middle" fontFamily="'JetBrains Mono',monospace"
@@ -487,9 +579,11 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen }) {
   return (
     <svg width={fullscreen ? "92vmin" : "100%"} height={fullscreen ? "82vmin" : undefined}
       viewBox={`0 0 ${S} ${H}`} style={{ maxWidth:S, overflow:"visible" }}>
-      <line x1={X0} y1={BAR} x2={X1} y2={BAR} stroke="#7c3aed" strokeWidth={8} strokeLinecap="round" opacity={0.85} />
-      {voz(metA, runningA, true)}
-      {voz(metB, runningB, false)}
+      <line ref={barrido} x1={X0} y1={BAR} x2={X1} y2={BAR}
+        stroke="#7c3aed" strokeWidth={8} strokeLinecap="round" opacity={0.3}
+        style={{ transition:`opacity ${salida(DUR.base)}ms ${EASE.sale}`, willChange:"opacity" }} />
+      {voz(metA, pa, true,  hojasA, haloA, ramaA)}
+      {voz(metB, pb, false, hojasB, haloB, ramaB)}
     </svg>
   );
 }
@@ -1549,6 +1643,11 @@ export default function DualMetronome() {
   useEffect(() => () => clearTimeout(bpmFlashRef.current), []);
 
   // audio refs — the scheduler reads exclusively from these, never from state
+  // Cada voz anota acá los pulsos que ya agendó. El visualizador los lee con
+  // ctx.currentTime, el mismo reloj que suena, así que la imagen no se puede
+  // despegar del audio: no hay dos relojes, hay uno.
+  const pulsosA = useRef(crearBuffer()), pulsosB = useRef(crearBuffer());
+
   const ctxRef     = useRef(null);
   const schedRef   = useRef(null);
   const sessionRef = useRef(0); // incremented on every hardStop — invalidates pending setTimeouts
@@ -1571,7 +1670,7 @@ export default function DualMetronome() {
     if (!ctx || ctx.state === "closed") return;
     const ahead = ctx.currentTime + LOOKAHEAD;
 
-    const sched = (runRef, otherRef, metRef, nextRef, tickRef, setMeasures, setMet, fixedPan, seqRef, setSeqPos, seqPosRef) => {
+    const sched = (runRef, otherRef, metRef, nextRef, tickRef, setMeasures, setMet, fixedPan, seqRef, setSeqPos, seqPosRef, pulsos) => {
       if (!runRef.current) return;
       const sid = sessionRef.current; // snapshot — callbacks discard themselves if session changed
       const { bpm, timeSig, volume, muted, strongSound, weakSound, subdivision, accentGroups, subAccents } = metRef.current;
@@ -1597,6 +1696,10 @@ export default function DualMetronome() {
           else if (info.accent === "group") synthClick(ctx, t, strongSound, volume * SUB_ACCENT_LEVEL, pan);
           else                             synthClick(ctx, t, weakSound,   volume, pan);
         }
+        // el dibujo lee de acá, con el mismo reloj que suena
+        anotarPulso(pulsos, { t, idx: info.pulseInMeasure, total: info.num,
+          acento: first ? "fuerte" : info.accent === "group" ? "grupo" : "normal",
+          paso: info.seconds, groups: info.groups });
         const delay = Math.max(0, (t - ctx.currentTime) * 1000);
         const cb = info.pulseInMeasure, sig = `${info.num}/${info.den}`, grp = info.groups;
         const pos = { stepIdx: info.stepIdx, measureInStep: info.measureInStep };
@@ -1632,6 +1735,10 @@ export default function DualMetronome() {
           else if (isSubAcc) synthClick(ctx, t, weakSound,   volume * SUB_ACCENT_LEVEL, pan);
           else               synthClick(ctx, t, weakSound,   volume * SUB_LEVEL, pan);
         }
+        if (isMain) {
+          anotarPulso(pulsos, { t, idx: beatIdx, total,
+            acento: isAcc ? "fuerte" : "normal", paso: subInt * subdivision, groups: accentGroups });
+        }
         if (isAcc) {
           const bar   = Math.floor(tick / (subdivision * total)) + 1;
           const delay = Math.max(0, (t - ctx.currentTime) * 1000);
@@ -1663,8 +1770,8 @@ export default function DualMetronome() {
     };
     // cada voz con su propia secuencia; la que tenga seqRef en null sigue con
     // el compás del modo, como siempre
-    sched(runARef, metBRef, metARef, nextARef, tickARef, setMeasuresA, setMetA, -1, seqRefA, setSeqPosA, seqPosRefA);
-    sched(runBRef, metARef, metBRef, nextBRef, tickBRef, setMeasuresB, setMetB, +1, seqRefB, setSeqPosB, seqPosRefB);
+    sched(runARef, metBRef, metARef, nextARef, tickARef, setMeasuresA, setMetA, -1, seqRefA, setSeqPosA, seqPosRefA, pulsosA.current);
+    sched(runBRef, metARef, metBRef, nextBRef, tickBRef, setMeasuresB, setMetB, +1, seqRefB, setSeqPosB, seqPosRefB, pulsosB.current);
   }, []);
 
   // centralized AudioContext creation — some browsers (old Safari, strict
@@ -1690,6 +1797,7 @@ export default function DualMetronome() {
     ctxRef.current?.close(); ctxRef.current = null;
     runARef.current = false; runBRef.current = false;
     if (!wasA && !wasB) return; // nothing was playing, nothing to restart
+    limpiarBuffer(pulsosA.current); limpiarBuffer(pulsosB.current);
     setPulseCountA(0); setPulseCountB(0); // params changed mid-flight — cycle starts over
     const ctx = createCtx(); ctxRef.current = ctx;
     if (!ctx) return;
@@ -1751,6 +1859,7 @@ export default function DualMetronome() {
     clearInterval(schedRef.current); schedRef.current = null;
     ctxRef.current?.close(); ctxRef.current = null;
     setRunningA(false); setRunningB(false); setDualOn(false);
+    limpiarBuffer(pulsosA.current); limpiarBuffer(pulsosB.current);
     setMetA((p) => ({ ...p, beat:-1 })); setMetB((p) => ({ ...p, beat:-1 }));
     setMeasuresA(0); setMeasuresB(0);
     setPulseCountA(0); setPulseCountB(0);
@@ -1805,6 +1914,7 @@ export default function DualMetronome() {
     // defensive: never stack a second scheduler/context on top of a live one
     clearInterval(schedRef.current); schedRef.current = null;
     ctxRef.current?.close();
+    limpiarBuffer(pulsosA.current); limpiarBuffer(pulsosB.current);
     setPulseCountA(0); setPulseCountB(0); // fresh cycle
     const ctx = createCtx(); ctxRef.current = ctx;
     if (!ctx) return;
@@ -2186,7 +2296,7 @@ export default function DualMetronome() {
         <div style={{ position:"fixed", inset:0, zIndex:999, display:"flex", alignItems:"center", justifyContent:"center", background:"#15171c" }}>
           <div>
             {mode === "libre" ? (
-              <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB}
+              <CircularVisualizer ctxRef={ctxRef} pulsosA={pulsosA} pulsosB={pulsosB} metA={metA} metB={metB} runningA={runningA} runningB={runningB}
                 centerLabel={centerLabel ?? `${metA.subdivision}:${metB.subdivision}`} showSubtitle={false} showMcm={false}
                 totalAOverride={seqOnA ? undefined : metA.subdivision} totalBOverride={seqOnB ? undefined : metB.subdivision}
                 beatAOverride={seqOnA ? undefined : metA.subTick} beatBOverride={seqOnB ? undefined : metB.subTick}
@@ -2194,7 +2304,7 @@ export default function DualMetronome() {
                 showCycleRing cycleTargetA={libreCycleTargetA} cycleTargetB={libreCycleTargetB}
                 cyclePulseA={pulseCountA} cyclePulseB={pulseCountB} />
             ) : (
-              <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={false} vizStyle={vizStyle} fullscreen
+              <CircularVisualizer ctxRef={ctxRef} pulsosA={pulsosA} pulsosB={pulsosB} metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={false} vizStyle={vizStyle} fullscreen
                 showCycleRing={isPolimetria} cycleTargetA={polyTarget} cycleTargetB={polyTarget}
                 cyclePulseA={pulseCountA} cyclePulseB={pulseCountA} />
             )}
@@ -2257,7 +2367,7 @@ export default function DualMetronome() {
       {isMetrica && (
         <>
           <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
-            <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={false} vizStyle={vizStyle} />
+            <CircularVisualizer ctxRef={ctxRef} pulsosA={pulsosA} pulsosB={pulsosB} metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={false} vizStyle={vizStyle} />
           </div>
           <div style={{ maxWidth:680, margin:"0 auto 20px" }}>
             <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} status={practiceStatus} onStatus={updatePracticeStatus}
@@ -2282,7 +2392,7 @@ export default function DualMetronome() {
       {isPolimetria && (
         <>
           <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
-            <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={false} vizStyle={vizStyle}
+            <CircularVisualizer ctxRef={ctxRef} pulsosA={pulsosA} pulsosB={pulsosB} metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={false} vizStyle={vizStyle}
               showCycleRing cycleTargetA={polyTarget} cycleTargetB={polyTarget}
               cyclePulseA={pulseCountA} cyclePulseB={pulseCountA} />
           </div>
@@ -2310,7 +2420,7 @@ export default function DualMetronome() {
       {mode === "libre" && (
         <>
           <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
-            <CircularVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB}
+            <CircularVisualizer ctxRef={ctxRef} pulsosA={pulsosA} pulsosB={pulsosB} metA={metA} metB={metB} runningA={runningA} runningB={runningB}
               centerLabel={centerLabel ?? `${metA.subdivision}:${metB.subdivision}`} showSubtitle={false} showMcm={false}
               totalAOverride={seqOnA ? undefined : metA.subdivision} totalBOverride={seqOnB ? undefined : metB.subdivision}
               beatAOverride={seqOnA ? undefined : metA.subTick} beatBOverride={seqOnB ? undefined : metB.subTick}
