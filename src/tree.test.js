@@ -4,11 +4,29 @@ import { leafPositions, treeLayout, groupOfLeaf, activePath, leafRadius } from "
 const span = { x0: 60, x1: 620 };
 
 describe("leafPositions", () => {
-  it("centra cada hoja en su celda, sin pegarlas al borde", () => {
+  it("el pulso 0 cae siempre en el origen del eje", () => {
     const l = leafPositions(7, 60, 620);
     expect(l).toHaveLength(7);
-    expect(l[0].x).toBe(100);   // 60 + 80*0.5
-    expect(l[6].x).toBe(580);   // 60 + 80*6.5
+    expect(l[0].x).toBe(60);    // el 1 del compás, en el origen
+    expect(l[6].x).toBe(540);   // 60 + 80*6
+  });
+
+  it("dos voces con distinta cantidad de pulsos comparten el eje", () => {
+    // Es la razón de ser de este reparto: en un 4 contra 5 los dos "1" suenan
+    // juntos, así que tienen que dibujarse juntos, y el resto no debe coincidir.
+    const a = leafPositions(4, 0, 100).map((p) => p.x);
+    const b = leafPositions(5, 0, 100).map((p) => p.x);
+    expect(a[0]).toBe(b[0]);                       // sólo el 1 coincide
+    expect(a).toEqual([0, 25, 50, 75]);
+    expect(b).toEqual([0, 20, 40, 60, 80]);
+    const juntos = a.filter((x) => b.includes(x));
+    expect(juntos).toEqual([0]);
+  });
+
+  it("un 4 contra 8 sí coincide en cada pulso de la voz lenta", () => {
+    const a = leafPositions(4, 0, 100).map((p) => p.x);
+    const b = leafPositions(8, 0, 100).map((p) => p.x);
+    expect(a.every((x) => b.includes(x))).toBe(true);
   });
 
   it("reparte parejo: la distancia entre hojas es siempre la misma", () => {
@@ -32,8 +50,8 @@ describe("treeLayout", () => {
 
   it("centra cada grupo sobre las hojas que cubre, no sobre su ancho", () => {
     const t = treeLayout(7, [2, 2, 3], span);
-    // grupo 3: hojas 4,5,6 en 420, 500, 580 -> centro 500
-    expect(t.groups[2].x).toBe(500);
+    // grupo 3: hojas 4,5,6 en 380, 460, 540 -> centro 460
+    expect(t.groups[2].x).toBe(460);
     expect(t.rootX).toBe(340);
   });
 
@@ -72,7 +90,7 @@ describe("groupOfLeaf y activePath", () => {
 
   it("el camino une raíz, grupo y hoja", () => {
     const p = activePath(t, 4);
-    expect(p).toEqual({ groupIdx: 2, rootX: 340, groupX: 500, leafX: 420 });
+    expect(p).toEqual({ groupIdx: 2, rootX: 340, groupX: 460, leafX: 380 });
   });
 });
 

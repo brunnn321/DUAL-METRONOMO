@@ -484,7 +484,7 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
           h.setAttribute("cx", p.x);
           h.setAttribute("cy", BAR + (arriba ? -12 : 12));
           // el halo crece mientras se apaga: es la onda del golpe
-          h.setAttribute("transform", `translate(${p.x} ${BAR + (arriba ? -12 : 12)}) scale(${(1 + (1 - brillo) * 2.4).toFixed(3)}) translate(${-p.x} ${-(BAR + (arriba ? -12 : 12))})`);
+          h.setAttribute("transform", `translate(${p.x} ${BAR + (arriba ? -12 : 12)}) scale(${(0.5 + (1 - brillo) * 1.1).toFixed(3)}) translate(${-p.x} ${-(BAR + (arriba ? -12 : 12))})`);
           h.setAttribute("opacity", (brillo * 0.5).toFixed(3));
         } else {
           h.setAttribute("opacity", 0);
@@ -544,7 +544,7 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
         )}
 
         {/* la onda del golpe: un círculo que crece mientras se apaga */}
-        <circle ref={halo} cx={layout.rootX} cy={yHoja} r={r * 2.2} fill="none"
+        <circle ref={halo} cx={layout.rootX} cy={yHoja} r={r * 1.8} fill="none"
           stroke={HOT} strokeWidth={2} opacity={0} style={{ willChange:"transform, opacity" }} />
 
         {/* la rama que suena, encendida por el bucle */}

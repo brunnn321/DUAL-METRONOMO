@@ -10,13 +10,19 @@
 
 import { effectiveGroups } from "./phase.js";
 
-// Reparte `total` hojas entre x0 y x1, centradas en su propia celda: con 7
-// hojas entre 60 y 620 la primera queda en 100 y la última en 580, nunca
-// pegadas al borde.
+// Reparte `total` hojas sobre un eje de tiempo COMPARTIDO: el pulso 0 de
+// cualquier voz cae en x0, y el resto a i/n del ancho.
+//
+// Esto no es una decisión estética. Las dos voces se apoyan en la misma barra,
+// y el pulso 1 de A y el pulso 1 de B suenan en el mismo instante: si cada una
+// centrara sus hojas en su propia celda, esos dos pulsos quedarían dibujados en
+// sitios distintos y el dibujo mentiría. Con este reparto, un 4 contra 5 se ve
+// coincidiendo sólo en el 1 —que es exactamente lo que se oye— y se ve dónde
+// las dos grillas se cruzan y dónde no.
 export function leafPositions(total, x0, x1) {
   const n = Math.max(1, Math.round(total));
   const paso = (x1 - x0) / n;
-  return Array.from({ length: n }, (_, i) => ({ i, x: x0 + paso * (i + 0.5) }));
+  return Array.from({ length: n }, (_, i) => ({ i, x: x0 + paso * i }));
 }
 
 /**
