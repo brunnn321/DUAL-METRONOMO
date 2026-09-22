@@ -594,6 +594,11 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
       <line ref={barrido} x1={X0} y1={BAR} x2={X1} y2={BAR}
         stroke="#7c3aed" strokeWidth={8} strokeLinecap="round" opacity={0.3}
         style={{ transition:`opacity ${salida(DUR.base)}ms ${EASE.sale}`, willChange:"opacity" }} />
+      {/* Las barras de compás, como en una partitura. Sin ellas el hueco entre
+          la última hoja y el final parece un error de alineación, cuando en
+          realidad es la duración del último pulso. */}
+      <line x1={X0} y1={BAR - 16} x2={X0} y2={BAR + 16} stroke="#7c3aed" strokeWidth={3} opacity={0.75} />
+      <line x1={X1} y1={BAR - 16} x2={X1} y2={BAR + 16} stroke="#7c3aed" strokeWidth={3} opacity={0.75} />
       {voz(metA, pa, true,  hojasA, haloA, ramaA)}
       {voz(metB, pb, false, hojasB, haloB, ramaB)}
     </svg>

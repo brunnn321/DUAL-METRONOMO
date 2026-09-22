@@ -52,7 +52,7 @@ describe("treeLayout", () => {
     const t = treeLayout(7, [2, 2, 3], span);
     // grupo 3: hojas 4,5,6 en 380, 460, 540 -> centro 460
     expect(t.groups[2].x).toBe(460);
-    expect(t.rootX).toBe(300);   // centro de las hojas (60..540), no del ancho
+    expect(t.rootX).toBe(340);   // centro del compás, igual que la barra
   });
 
   it("una agrupación que no suma el total se descarta y queda un solo grupo", () => {
@@ -73,6 +73,12 @@ describe("treeLayout", () => {
     expect(t.leaves).toHaveLength(1);
     expect(t.rootX).toBe(t.leaves[0].x);
     expect(t.groups[0].x).toBe(t.leaves[0].x);
+  });
+
+  it("con más de un pulso la raíz va al centro del compás, como la barra", () => {
+    for (const n of [2, 4, 7, 10, 21]) {
+      expect(treeLayout(n, null, span).rootX).toBe(340);
+    }
   });
   it("aguanta un compás de 21 sin perder hojas", () => {
     const t = treeLayout(21, [3, 3, 3, 3, 3, 3, 3], span);
@@ -97,7 +103,7 @@ describe("groupOfLeaf y activePath", () => {
 
   it("el camino une raíz, grupo y hoja", () => {
     const p = activePath(t, 4);
-    expect(p).toEqual({ groupIdx: 2, rootX: 300, groupX: 460, leafX: 380 });
+    expect(p).toEqual({ groupIdx: 2, rootX: 340, groupX: 460, leafX: 380 });
   });
 });
 

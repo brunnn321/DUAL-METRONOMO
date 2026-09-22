@@ -56,11 +56,13 @@ export function treeLayout(total, groups, { x0, x1 }) {
     if (from >= n) break;
   }
 
-  // La raíz se para sobre el centro de SUS hojas, no sobre el centro del ancho.
-  // Con un compás de un solo pulso —que es lo que hay en DUAL TEMPO sin
-  // secuencia— el centro del ancho dejaba la raíz lejísimos de su única hoja y
-  // el árbol salía como una diagonal cruzando la pantalla.
-  const rootX = (leaves[0].x + leaves[leaves.length - 1].x) / 2;
+  // La raíz va al centro del COMPÁS, que es lo que mide la barra de tiempo: si
+  // se para sobre el centro de sus hojas, el árbol se recuesta a la izquierda y
+  // no coincide con la barra, porque la última hoja no llega al final —el hueco
+  // que queda es la duración del último pulso, no un error.
+  // La excepción es el compás de un solo pulso: ahí la raíz va sobre su única
+  // hoja, o sale una diagonal cruzando la pantalla.
+  const rootX = n === 1 ? leaves[0].x : (x0 + x1) / 2;
   return { leaves, groups: out, rootX };
 }
 
