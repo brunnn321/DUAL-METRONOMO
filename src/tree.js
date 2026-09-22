@@ -56,7 +56,12 @@ export function treeLayout(total, groups, { x0, x1 }) {
     if (from >= n) break;
   }
 
-  return { leaves, groups: out, rootX: (x0 + x1) / 2 };
+  // La raíz se para sobre el centro de SUS hojas, no sobre el centro del ancho.
+  // Con un compás de un solo pulso —que es lo que hay en DUAL TEMPO sin
+  // secuencia— el centro del ancho dejaba la raíz lejísimos de su única hoja y
+  // el árbol salía como una diagonal cruzando la pantalla.
+  const rootX = (leaves[0].x + leaves[leaves.length - 1].x) / 2;
+  return { leaves, groups: out, rootX };
 }
 
 // A qué grupo pertenece un pulso. Devuelve -1 si el pulso cae fuera del compás

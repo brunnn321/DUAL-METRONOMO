@@ -18,12 +18,32 @@ body {
   to   { stroke-dashoffset: 0; }
 }
 
-@keyframes waveBurst {
-  from { r: 5;  stroke-width: 2.5; opacity: 0.9; }
-  to   { r: 24; stroke-width: 0.5; opacity: 0; }
-}
 
 @keyframes slowSpin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
+}
+
+/* El foco tiene que verse: sin esto la app no se puede usar con teclado, y era
+   uno de los puntos de la lista de control de la skill que no se cumplia. */
+:focus-visible {
+  outline: 2px solid #ffd04a;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* waveBurst animaba `r` y `stroke-width`, que obligan a repintar en cada cuadro.
+   Con transform y opacity el navegador lo compone sin volver a pintar. */
+@keyframes waveBurst {
+  from { transform: scale(1);   opacity: 0.9; }
+  to   { transform: scale(4.8); opacity: 0; }
+}
+
+/* Con la preferencia de menos movimiento, nada se mueve solo. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

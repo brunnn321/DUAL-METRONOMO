@@ -10,6 +10,8 @@ import { exportForState, downloadMidi } from "./midiExport.js";
 import { treeLayout, activePath, leafRadius } from "./tree.js";
 // fichas de movimiento y el búfer que sincroniza el dibujo con el audio
 import { DUR, EASE, salida, decay, crearBuffer, anotarPulso, limpiarBuffer, pulsoEn, movimientoReducido } from "./motion.js";
+// fichas visuales: tipografía, espaciado y color, en un solo sitio
+import { FS, SP, TX, BG, VOZ, RAD, etiqueta, ANCHO, TRANSPORTE } from "./ui.js";
 
 // ─── constants ────────────────────────────────────────────────────────────────
 const beatsPerMeasure = (sig) => parseInt(sig.split("/")[0]);
@@ -88,13 +90,13 @@ function synthClick(ctx, time, soundKey, volume, pan = 0) {
 // valores inválidos.
 function NumberSelect({ label, value, values, onChange, accent }) {
   return (
-    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+    <div style={{ display:"flex", alignItems:"center", gap:SP.sm }}>
       {label && (
-        <span style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1 }}>{label}</span>
+        <span style={etiqueta()}>{label}</span>
       )}
       <select value={value} onChange={(e) => onChange(parseInt(e.target.value))} style={{
-        background:"#252830", border:`1px solid ${accent}`, borderRadius:6, color:accent,
-        fontFamily:"'JetBrains Mono',monospace", fontSize:17, fontWeight:700,
+        background:"#252830", border:`1px solid ${accent}`, borderRadius:RAD.sm, color:accent,
+        fontFamily:"'JetBrains Mono',monospace", fontSize:FS.body, fontWeight:700,
         padding:"6px 10px", outline:"none", cursor:"pointer", minWidth:66,
       }}>
         {values.map((v) => <option key={v} value={v}>{v}</option>)}
@@ -106,15 +108,15 @@ function NumberSelect({ label, value, values, onChange, accent }) {
 // ─── mode selector ────────────────────────────────────────────────────────────
 function ModeSelector({ mode, setMode }) {
   return (
-    <div style={{ display:"flex", background:"#1a1c22", borderRadius:8, padding:3, maxWidth:520, margin:"0 auto", gap:2 }}>
+    <div style={{ display:"flex", background:"#1a1c22", borderRadius:RAD.md, padding:3, maxWidth:ANCHO, margin:"0 auto", gap:SP.xs }}>
       {[["metrica","DUAL SINC","#a78bfa"],["libre","DUAL TEMPO","#ffd04a"],["polimetria","DUAL POLY","#4aff9a"]].map(([k, lbl, color]) => {
         const on = mode === k;
         return (
           <button key={k} onClick={() => setMode(k)} style={{
             flex:1, background: on ? `${color}1a` : "none",
             border:`1px solid ${on ? color : "transparent"}`,
-            borderRadius:6, color: on ? color : "#444",
-            fontFamily:"'JetBrains Mono',monospace", fontSize:10,
+            borderRadius:RAD.sm, color: on ? color : "#444",
+            fontFamily:"'JetBrains Mono',monospace", fontSize:FS.micro,
             fontWeight: on ? 600 : 400, padding:"8px 10px",
             cursor:"pointer", letterSpacing:0.5, transition:"all 0.15s",
             boxShadow: on ? `0 0 10px ${color}33` : "none",
@@ -309,23 +311,26 @@ function CircularVisualizer({
   if (vizStyle === "tree") {
     return (
       <TreeVisualizer metA={metA} metB={metB} runningA={runningA} runningB={runningB} fullscreen={fullscreen}
-        ctxRef={ctxRef} pulsosA={pulsosA} pulsosB={pulsosB} />
+        ctxRef={ctxRef} pulsosA={pulsosA} pulsosB={pulsosB}
+        totalAOverride={totalAOverride} totalBOverride={totalBOverride}
+        groupsAOverride={metA.subAccents} groupsBOverride={metB.subAccents} />
     );
   }
 
   return (
     <div style={{
-      display:"flex", flexDirection:"column", alignItems:"center", gap:10,
+      display:"flex", flexDirection:"column", alignItems:"center", gap:SP.md,
+      width:"100%", maxWidth:460,
       transform: pulse ? "scale(1.035)" : "scale(1)",
-      transition: pulse ? "transform 0.04s" : "transform 0.25s ease-out",
+      transition: pulse ? "transform 0.04s" : `transform ${DUR.slow}ms ${EASE.entra}`,
     }}>
-      <div style={{ position:"relative" }}>
+      <div style={{ position:"relative", width:"100%", maxWidth:460, display:"flex", justifyContent:"center" }}>
         <div style={{
           position:"absolute", inset:-30, borderRadius:"50%",
           background: `radial-gradient(circle, ${syncFlash ? "#ffffff22" : `${CA}14`} 0%, transparent 70%)`,
           transition:"background 0.3s", pointerEvents:"none",
         }} />
-        <svg width={fullscreen ? "82vmin" : S} height={fullscreen ? "82vmin" : S} viewBox={`0 0 ${S} ${S}`} style={{ overflow:"visible", position:"relative" }}>
+        <svg width={fullscreen ? "82vmin" : "100%"} height={fullscreen ? "82vmin" : undefined} viewBox={`0 0 ${S} ${S}`} style={{ overflow:"visible", position:"relative", maxWidth:460, display:"block" }}>
           <defs>
             <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
               <stop offset="0%" stopColor={syncFlash ? "#ffffff33" : "#ffffff0a"} />
@@ -400,9 +405,9 @@ function CircularVisualizer({
         </svg>
       </div>
       {showSubtitle !== false && (
-        <div style={{ fontFamily:"monospace", fontSize:11, color:"#777", textAlign:"center" }}>
+        <div style={{ fontFamily:"monospace", fontSize:FS.small, color:TX.faint, textAlign:"center" }}>
           Polimetría {totalA} contra {totalB}
-          <span style={{ margin:"0 8px", color:"#444" }}>·</span>
+          <span style={{ margin:"0 8px", color:TX.muted }}>·</span>
           Coinciden cada{" "}
           <span style={{ color:"#ccc", fontWeight:700 }}>{lcmAB}</span> pulsos
         </div>
@@ -428,7 +433,11 @@ function CircularVisualizer({
 // Todo lo que se mueve lo hace con transform y opacity, que el navegador puede
 // componer sin volver a pintar. Nada de `r`, `stroke-width` ni `drop-shadow`
 // por elemento, que era lo que había antes.
-function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pulsosA, pulsosB }) {
+function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pulsosA, pulsosB,
+  // En DUAL TEMPO el compás es de un solo pulso: lo que tiene estructura ahí es
+  // la subdivisión, igual que en el círculo. Sin esto el árbol mostraba una
+  // hoja suelta y no decía nada.
+  totalAOverride, totalBOverride, groupsAOverride, groupsBOverride }) {
   const S = 680, H = 470;
   const X0 = 60, X1 = 620, BAR = 235;
   const CA = "#ff6b4a", CB = "#4ad9ff", HOT = "#4aff9a";
@@ -438,12 +447,15 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
   const haloA = useRef(null), haloB = useRef(null);
   const barrido = useRef(null);
 
-  const plan = (met) => {
-    const total  = Math.max(1, beatsPerMeasure(met.timeSig));
-    const layout = treeLayout(total, met.accentGroups, { x0: X0, x1: X1 });
-    return { total, layout, r: leafRadius(total, X0, X1) };
+  const plan = (met, totalOv, groupsOv) => {
+    const usaSub = totalOv != null;
+    const total  = Math.max(1, usaSub ? totalOv : beatsPerMeasure(met.timeSig));
+    const layout = treeLayout(total, usaSub ? groupsOv : met.accentGroups, { x0: X0, x1: X1 });
+    return { total, layout, r: leafRadius(total, X0, X1), usaSub,
+             etiqueta: usaSub ? `1/${total}` : met.timeSig };
   };
-  const pa = plan(metA), pb = plan(metB);
+  const pa = plan(metA, totalAOverride, groupsAOverride);
+  const pb = plan(metB, totalBOverride, groupsBOverride);
   // El scheduler reescribe accentGroups en cada pulso con un array NUEVO, así
   // que si el bucle dependiera de él se desmontaría y volvería a montar en cada
   // pulso, y nunca llegaría a dibujar. El plan viaja por un ref que se refresca
@@ -571,14 +583,14 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
 
         <circle cx={layout.rootX} cy={yRaiz} r={18} fill="#1e2028" stroke={color} strokeWidth={2.5} />
         <text x={layout.rootX} y={yRaiz + 5} textAnchor="middle" fontFamily="'JetBrains Mono',monospace"
-          fontSize={14} fontWeight={800} fill={color}>{met.timeSig}</text>
+          fontSize={FS.body} fontWeight={800} fill={color}>{p.etiqueta}</text>
       </g>
     );
   };
 
   return (
     <svg width={fullscreen ? "92vmin" : "100%"} height={fullscreen ? "82vmin" : undefined}
-      viewBox={`0 0 ${S} ${H}`} style={{ maxWidth:S, overflow:"visible" }}>
+      viewBox={`0 0 ${S} ${H}`} style={{ maxWidth:ANCHO, overflow:"visible", display:"block" }}>
       <line ref={barrido} x1={X0} y1={BAR} x2={X1} y2={BAR}
         stroke="#7c3aed" strokeWidth={8} strokeLinecap="round" opacity={0.3}
         style={{ transition:`opacity ${salida(DUR.base)}ms ${EASE.sale}`, willChange:"opacity" }} />
@@ -599,40 +611,40 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap,
   const [open, setOpen] = useState(true);
 
   return (
-    <div style={{ background:"#1e2028", borderRadius:12, maxWidth:680, margin:"0 auto", border:"1px solid #252830" }}>
+    <div style={{ background:"#1e2028", borderRadius:RAD.lg, maxWidth:ANCHO, margin:"0 auto", border:"1px solid #252830" }}>
       <button onClick={() => setOpen((o) => !o)} style={{
         width:"100%", background:"none", border:"none", cursor:"pointer",
         display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 20px",
       }}>
-        <span style={{ color:"#555", fontSize:10, fontFamily:"monospace", letterSpacing:2 }}>BPM Y RELACIÓN</span>
-        <ChevronRight size={14} color="#555" style={{ transform: open ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
+        <span style={etiqueta()}>BPM Y RELACIÓN</span>
+        <ChevronRight size={14} color={TX.muted} style={{ transform: open ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
       </button>
       <div style={{
-        display: open ? "flex" : "none", flexDirection:"column", gap:18,
+        display: open ? "flex" : "none", flexDirection:"column", gap:SP.lg,
         padding:"0 24px 20px",
       }}>
       {/* BPM base */}
       <div>
-        <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:2, marginBottom:8 }}>BPM A</div>
-        <div style={{ display:"flex", alignItems:"center", gap:16 }}>
+        <div style={{ ...etiqueta(), marginBottom:SP.sm }}>BPM A</div>
+        <div style={{ display:"flex", alignItems:"center", gap:SP.lg }}>
           <div style={{
-            fontFamily:"'JetBrains Mono',monospace", fontSize:52, fontWeight:700, lineHeight:1, minWidth:96,
+            fontFamily:"'JetBrains Mono',monospace", fontSize:FS.hero, fontWeight:700, lineHeight:1, minWidth:96,
             color: bpmFlash ? "#ffd04a" : "#ff6b4a",
             textShadow: bpmFlash ? "0 0 18px #ffd04a" : "none",
             transition: bpmFlash ? "none" : "color 0.45s, text-shadow 0.45s",
           }}>
             {bpmBase}
           </div>
-          <div style={{ flex:1, display:"flex", flexDirection:"column", gap:6 }}>
+          <div style={{ flex:1, display:"flex", flexDirection:"column", gap:SP.sm }}>
             <input type="range" min={1} max={600} value={bpmBase}
               onChange={(e) => onBpmBase(parseInt(e.target.value))}
               style={{ width:"100%", accentColor:"#ff6b4a" }} />
-            <button onClick={onTap} style={{ background:"#ff6b4a14", border:"1px solid #ff6b4a44", borderRadius:7, color:"#ff6b4a", fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1, marginTop:4 }}>TAP TEMPO</button>
-            <div style={{ display:"flex", gap:5 }}>
+            <button onClick={onTap} style={{ background:"#ff6b4a14", border:"1px solid #ff6b4a44", borderRadius:RAD.md, color:"#ff6b4a", fontFamily:"'JetBrains Mono',monospace", fontSize:FS.small, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1, marginTop:4 }}>TAP TEMPO</button>
+            <div style={{ display:"flex", gap:SP.sm }}>
               {[-10,-1,+1,+10].map((d) => (
                 <button key={d} onClick={() => onBpmBase(Math.min(600, Math.max(1, bpmBase + d)))} style={{
-                  background:"#252830", border:"1px solid #ff6b4a33", borderRadius:5,
-                  color:"#ff6b4a", fontFamily:"monospace", fontSize:11, padding:"4px 9px", cursor:"pointer",
+                  background:"#252830", border:"1px solid #ff6b4a33", borderRadius:RAD.sm,
+                  color:"#ff6b4a", fontFamily:"monospace", fontSize:FS.small, padding:"4px 9px", cursor:"pointer",
                 }}>{d > 0 ? `+${d}` : d}</button>
               ))}
             </div>
@@ -643,15 +655,15 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap,
       {/* selectores y acentos — el acento vive junto al compás, porque en
           métrica aditiva el acento ES la métrica: un 8 sin acentuar es
           indistinguible de un 4/4 */}
-      <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
+      <div style={{ display:"flex", gap:SP.xl, flexWrap:"wrap" }}>
         {[
           { label:"A", accent:"#ff6b4a", val:base,     set:onBase,  met:metA, onChange:onChangeA },
           { label:"B", accent:"#4ad9ff", val:derivado, set:onDeriv, met:metB, onChange:onChangeB },
         ].map(({ label, accent, val, set, met, onChange }) => (
-          <div key={label} style={{ flex:1, minWidth:200, display:"flex", flexDirection:"column", gap:10 }}>
+          <div key={label} style={{ flex:1, minWidth:200, display:"flex", flexDirection:"column", gap:SP.md }}>
             <NumberSelect label={label} value={val} values={PULSE_VALUES} onChange={set} accent={accent} />
             <div>
-              <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:6 }}>
+              <div style={{ ...etiqueta(), marginBottom:SP.sm }}>
                 ACENTOS{(label === "A" ? accentViewA : accentViewB) && (
                   <span style={{ color:"#ffd04a", marginLeft:6 }}>PASO {(label === "A" ? accentViewA : accentViewB).step}</span>
                 )}
@@ -667,26 +679,26 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap,
 
       {/* info */}
       <div style={{
-        background:"#15171c", borderRadius:8, padding:"16px 20px",
+        background:"#15171c", borderRadius:RAD.md, padding:"16px 20px",
         display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px 32px",
         border:"1px solid #252830",
       }}>
         <div>
-          <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>RELACIÓN</div>
-          <div style={{ color:"#eee", fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, marginTop:3 }}>{ratio}</div>
+          <div style={etiqueta()}>RELACIÓN</div>
+          <div style={{ color:"#eee", fontFamily:"'JetBrains Mono',monospace", fontSize:FS.lead, fontWeight:700, marginTop:3 }}>{ratio}</div>
           {!reduced.isCoprime && (
-            <div style={{ color:"#e0a030", fontSize:10, fontFamily:"monospace", marginTop:4 }}>
+            <div style={{ color:"#e0a030", fontSize:FS.micro, fontFamily:"monospace", marginTop:4 }}>
               = {reduced.num}:{reduced.den} — subdivisión, no polirritmia
             </div>
           )}
         </div>
         <div>
-          <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>BPM B</div>
-          <div style={{ color:"#4ad9ff", fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, marginTop:3 }}>{fmtBpm(bpmB)}</div>
+          <div style={etiqueta()}>BPM B</div>
+          <div style={{ color:"#4ad9ff", fontFamily:"'JetBrains Mono',monospace", fontSize:FS.lead, fontWeight:700, marginTop:3 }}>{fmtBpm(bpmB)}</div>
         </div>
       </div>
       {reduced.isCoprime && (
-        <div style={{ color:"#666", fontSize:10, fontFamily:"monospace", textAlign:"center" }}>
+        <div style={{ color:TX.faint, fontSize:FS.micro, fontFamily:"monospace", textAlign:"center" }}>
           {reduced.num}:{reduced.den} — {bandLbl}
         </div>
       )}
@@ -698,11 +710,11 @@ function PoliPanel({ bpmBase, base, derivado, onBpmBase, onBase, onDeriv, onTap,
 // ─── sound select (dropdown) ──────────────────────────────────────────────────
 function SoundSelect({ label, value, onChange, accent }) {
   return (
-    <div style={{ display:"flex", alignItems:"center", gap:7, flex:1, minWidth:120 }}>
-      <span style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, minWidth:40 }}>{label}</span>
+    <div style={{ display:"flex", alignItems:"center", gap:SP.sm, flex:1, minWidth:120 }}>
+      <span style={{ color:TX.muted, fontSize:FS.micro, fontFamily:"monospace", letterSpacing:1, minWidth:40 }}>{label}</span>
       <select value={value} onChange={(e) => onChange(e.target.value)} style={{
-        flex:1, background:"#252830", border:`1px solid ${accent}33`, borderRadius:5,
-        color:accent, fontFamily:"monospace", fontSize:11, fontWeight:600,
+        flex:1, background:"#252830", border:`1px solid ${accent}33`, borderRadius:RAD.sm,
+        color:accent, fontFamily:"monospace", fontSize:FS.small, fontWeight:600,
         padding:"5px 8px", outline:"none", cursor:"pointer",
       }}>
         {SOUNDS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
@@ -747,15 +759,15 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures, b
     <div style={{
       background:"#1e2028",
       border:`2px solid ${running ? accent + "55" : accent + "1a"}`,
-      borderRadius:12, padding:"20px",
-      display:"flex", flexDirection:"column", gap:14,
+      borderRadius:RAD.lg, padding:"20px",
+      display:"flex", flexDirection:"column", gap:SP.lg,
       flex:1, minWidth:270, transition:"border-color 0.25s",
     }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end" }}>
         <button onClick={onToggle} title={running ? "Detener" : "Reproducir"} style={{
           background: running ? "#2a1010" : "#0d2616",
           border:`1px solid ${running ? "#ff4a4a" : "#4aff7a"}`,
-          borderRadius:8, width:38, height:32, cursor:"pointer",
+          borderRadius:RAD.md, width:38, height:32, cursor:"pointer",
           display:"flex", alignItems:"center", justifyContent:"center",
           color: running ? "#ff4a4a" : "#4aff7a",
           boxShadow: running ? "none" : "0 0 10px #4aff7a33",
@@ -770,42 +782,42 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures, b
           width:"100%", background:"none", border:"none", cursor:"pointer",
           display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0 2px",
         }}>
-          <span style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1 }}>BPM Y RELACIÓN</span>
-          <ChevronRight size={12} color="#555" style={{ transform: settingsOpen ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
+          <span style={etiqueta()}>BPM Y RELACIÓN</span>
+          <ChevronRight size={12} color={TX.muted} style={{ transform: settingsOpen ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
         </button>
       </div>
-      <div style={{ display: settingsOpen ? "flex" : "none", flexDirection:"column", gap:14 }}>
-      <div style={{ display:"flex", alignItems:"center", gap:16 }}>
+      <div style={{ display: settingsOpen ? "flex" : "none", flexDirection:"column", gap:SP.lg }}>
+      <div style={{ display:"flex", alignItems:"center", gap:SP.lg }}>
         <div style={{
-          fontFamily:"'JetBrains Mono',monospace", fontSize:52, fontWeight:700, lineHeight:1, minWidth:96, textAlign:"center",
+          fontFamily:"'JetBrains Mono',monospace", fontSize:FS.hero, fontWeight:700, lineHeight:1, minWidth:96, textAlign:"center",
           color: bpmFlash ? "#ffd04a" : accent,
           textShadow: bpmFlash ? "0 0 18px #ffd04a" : "none",
           transition: bpmFlash ? "none" : "color 0.45s, text-shadow 0.45s",
         }}>
           {Math.round(bpm)}
         </div>
-        <div style={{ flex:1, display:"flex", flexDirection:"column", gap:6 }}>
+        <div style={{ flex:1, display:"flex", flexDirection:"column", gap:SP.sm }}>
           <input type="range" min={1} max={600} value={Math.round(bpm)}
             onChange={(e) => { const v = parseInt(e.target.value); onChange({ bpm: v, baseBpm: v }); }}
             style={{ width:"100%", accentColor:accent, cursor:"pointer" }} />
-          <button onClick={handleTap} style={{ background:`${accent}14`, border:`1px solid ${accent}44`, borderRadius:7, color:accent, fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1 }}>TAP TEMPO</button>
-          <div style={{ display:"flex", gap:5 }}>
+          <button onClick={handleTap} style={{ background:`${accent}14`, border:`1px solid ${accent}44`, borderRadius:RAD.md, color:accent, fontFamily:"'JetBrains Mono',monospace", fontSize:FS.small, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1 }}>TAP TEMPO</button>
+          <div style={{ display:"flex", gap:SP.sm }}>
             {[-10,-1,+1,+10].map((d) => (
-              <button key={d} onClick={() => { const v = Math.min(600, Math.max(1, Math.round(bpm)+d)); onChange({ bpm: v, baseBpm: v }); }} style={{ background:"#252830", border:`1px solid ${accent}33`, borderRadius:5, color:accent, fontFamily:"monospace", fontSize:12, padding:"5px 10px", cursor:"pointer" }}>{d > 0 ? `+${d}` : d}</button>
+              <button key={d} onClick={() => { const v = Math.min(600, Math.max(1, Math.round(bpm)+d)); onChange({ bpm: v, baseBpm: v }); }} style={{ background:"#252830", border:`1px solid ${accent}33`, borderRadius:RAD.sm, color:accent, fontFamily:"monospace", fontSize:FS.small, padding:"5px 10px", cursor:"pointer" }}>{d > 0 ? `+${d}` : d}</button>
             ))}
           </div>
         </div>
-        <div style={{ background:"#15171c", border:`1px solid ${accent}2a`, borderRadius:6, padding:"6px 10px", textAlign:"center", minWidth:58 }}>
-          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:20, fontWeight:700, color: running ? accent : "#333", lineHeight:1, transition:"color 0.3s" }}>{String(measures).padStart(3,"0")}</div>
-          <div style={{ color:"#444", fontSize:8, marginTop:3, fontFamily:"monospace", letterSpacing:1 }}>BAR</div>
+        <div style={{ background:"#15171c", border:`1px solid ${accent}2a`, borderRadius:RAD.sm, padding:"6px 10px", textAlign:"center", minWidth:58 }}>
+          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:FS.lead, fontWeight:700, color: running ? accent : "#333", lineHeight:1, transition:"color 0.3s" }}>{String(measures).padStart(3,"0")}</div>
+          <div style={{ color:TX.muted, fontSize:FS.micro, marginTop:3, fontFamily:"monospace", letterSpacing:1 }}>BAR</div>
         </div>
       </div>
 
-      <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:SP.md, flexWrap:"wrap" }}>
         <NumberSelect label="SUBDIV" value={subdivision} values={FIGURE_VALUES}
           onChange={(v) => onChange({ subdivision: v })} accent={accent} />
         {subdivision > 1 && (
-          <span style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>
+          <span style={etiqueta()}>
             CLIC EN UN PUNTO = ACENTO
           </span>
         )}
@@ -813,7 +825,7 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures, b
 
       {accentView && (
         <div>
-          <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:6 }}>
+          <div style={{ ...etiqueta(), marginBottom:SP.sm }}>
             ACENTOS DEL COMPÁS
             <span style={{ color:"#ffd04a", marginLeft:6 }}>PASO {accentView.step}</span>
           </div>
@@ -826,7 +838,7 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures, b
           deja marcar dónde abre cada grupo. Sin agrupar, una subdivisión alta
           es una nube de clicks — un 21 se estudia como 3+3+3+3+3+3+3, o como
           2+2+3 repetido. */}
-      <div style={{ display:"flex", gap:6, justifyContent:"center", flexWrap:"wrap" }}>
+      <div style={{ display:"flex", gap:SP.sm, justifyContent:"center", flexWrap:"wrap" }}>
         {Array.from({ length:subdivision }, (_,i) => {
           const isNow = subTick === i;
           const isAcc = subAccentIdx.has(i);
@@ -851,18 +863,18 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures, b
           width:"100%", background:"none", border:"none", cursor:"pointer",
           display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0 2px",
         }}>
-          <span style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1 }}>SONIDO Y VOLUMEN</span>
-          <ChevronRight size={12} color="#555" style={{ transform: soundOpen ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
+          <span style={etiqueta()}>SONIDO Y VOLUMEN</span>
+          <ChevronRight size={12} color={TX.muted} style={{ transform: soundOpen ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
         </button>
-        <div style={{ display: soundOpen ? "flex" : "none", flexDirection:"column", gap:8, paddingTop:8 }}>
-          <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+        <div style={{ display: soundOpen ? "flex" : "none", flexDirection:"column", gap:SP.sm, paddingTop:8 }}>
+          <div style={{ display:"flex", gap:SP.md, flexWrap:"wrap" }}>
             <SoundSelect label="FUERTE" value={strongSound} onChange={(v) => onChange({ strongSound:v })} accent={accent} />
             <SoundSelect label="DÉBIL"  value={weakSound}   onChange={(v) => onChange({ weakSound:v })}   accent={accent} />
           </div>
-          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:SP.sm }}>
             <button onClick={() => onChange({ muted:!muted })} style={{ background:"none", border:"none", cursor:"pointer", color: muted ? "#333" : accent, padding:2 }}>{muted ? <VolumeX size={15} /> : <Volume2 size={15} />}</button>
             <input type="range" min={0} max={1} step={0.01} value={volume} onChange={(e) => onChange({ volume: parseFloat(e.target.value) })} style={{ flex:1, accentColor:accent }} disabled={muted} />
-            <span style={{ color:"#444", fontSize:9, fontFamily:"monospace", width:26, textAlign:"right" }}>{Math.round(volume*100)}</span>
+            <span style={{ color:TX.muted, fontSize:FS.micro, fontFamily:"monospace", width:26, textAlign:"right" }}>{Math.round(volume*100)}</span>
           </div>
         </div>
       </div>
@@ -871,23 +883,35 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures, b
 }
 
 // ─── dual switch ──────────────────────────────────────────────────────────────
+// Barra de transporte fija, no un botón suelto flotando.
+//
+// El botón redondo suelto tapaba lo que quedara debajo al desplazar la página:
+// el panel de BPM, la fila de acentos, lo que tocara. Una barra con fondo y
+// borde define un borde real, y el contenido reserva su alto para que nunca
+// quede nada escondido detrás.
 function DualSwitch({ on, onToggle }) {
   return (
-    <button onClick={onToggle} title={on ? "Detener" : "Iniciar"} style={{
-      position:"fixed", bottom:24, left:"50%", transform:"translateX(-50%)", zIndex:1001,
-      display:"flex", alignItems:"center", justifyContent:"center",
-      width:64, height:64, borderRadius:"50%",
-      background: on ? "#2a1010" : "#0d2616",
-      border:`2px solid ${on ? "#ff4a4a" : "#4aff7a"}`,
-      cursor:"pointer", userSelect:"none",
-      boxShadow: on ? "0 0 20px #ff4a4a44" : "0 0 24px #4aff7a55",
-      transition:"all 0.2s",
+    <div style={{
+      position:"fixed", bottom:0, left:0, right:0, zIndex:1001,
+      height:TRANSPORTE, display:"flex", alignItems:"center", justifyContent:"center",
+      background:BG.page, borderTop:`1px solid ${BG.line}`,
+      boxShadow:`0 -12px 24px ${BG.page}`,
     }}>
-      {on
-        ? <Square size={26} color="#ff4a4a" fill="#ff4a4a" />
-        : <Play  size={28} color="#4aff7a" fill="#4aff7a" style={{ marginLeft:3 }} />
-      }
-    </button>
+      <button onClick={onToggle} title={on ? "Detener" : "Iniciar"} style={{
+        display:"flex", alignItems:"center", justifyContent:"center",
+        width:64, height:64, borderRadius:"50%",
+        background: on ? "#2a1010" : "#0d2616",
+        border:`2px solid ${on ? VOZ.parar : "#4aff7a"}`,
+        cursor:"pointer", userSelect:"none",
+        boxShadow: on ? `0 0 20px ${VOZ.parar}44` : "0 0 24px #4aff7a55",
+        transition:`all ${DUR.base}ms ${EASE.entra}`,
+      }}>
+        {on
+          ? <Square size={26} color={VOZ.parar} fill={VOZ.parar} />
+          : <Play  size={28} color="#4aff7a" fill="#4aff7a" style={{ marginLeft:3 }} />
+        }
+      </button>
+    </div>
   );
 }
 
@@ -947,25 +971,25 @@ function ProgressivePractice({ onBpmChange, onActivate, running, onStatus }) {
   }, [on]);
 
   return (
-    <div style={{ background:"#1e2028", borderRadius:12, padding:20, border:`1px solid ${on ? "#ffd04a44" : "#252830"}`, transition:"border-color 0.3s" }}>
+    <div style={{ background:"#1e2028", borderRadius:RAD.lg, padding:20, border:`1px solid ${on ? "#ffd04a44" : "#252830"}`, transition:"border-color 0.3s" }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-        <div style={{ color:"#555", fontSize:10, fontFamily:"monospace", letterSpacing:2 }}>PRÁCTICA PROGRESIVA</div>
-        <button onClick={on ? stop : start} style={{ background: on ? "#3d2a0d" : "#252830", border:`1px solid ${on ? "#ffd04a" : "#3a3d47"}`, borderRadius:6, color: on ? "#ffd04a" : "#666", fontFamily:"monospace", fontSize:11, fontWeight:600, padding:"5px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+        <div style={etiqueta()}>PRÁCTICA PROGRESIVA</div>
+        <button onClick={on ? stop : start} style={{ background: on ? "#3d2a0d" : "#252830", border:`1px solid ${on ? "#ffd04a" : "#3a3d47"}`, borderRadius:RAD.sm, color: on ? "#ffd04a" : "#666", fontFamily:"monospace", fontSize:FS.small, fontWeight:600, padding:"5px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:SP.sm }}>
           {on ? <Square size={11} /> : <Play size={11} />}{on ? "DETENER" : "INICIAR"}
         </button>
       </div>
-      <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom: on ? 14 : 0 }}>
+      <div style={{ display:"flex", gap:SP.md, flexWrap:"wrap", marginBottom: on ? 14 : 0 }}>
         {[["BPM INICIO","bpmStart",1,580],["BPM MÁX","bpmMax",2,600],["+ BPM","increment",1,20],["SEG / PASO","intervalSec",1,600]].map(([lbl,k,mn,mx]) => (
-          <div key={k} style={{ display:"flex", flexDirection:"column", gap:3, minWidth:80 }}>
-            <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>{lbl}</div>
+          <div key={k} style={{ display:"flex", flexDirection:"column", gap:SP.xs, minWidth:80 }}>
+            <div style={etiqueta()}>{lbl}</div>
             <input type="number" min={mn} max={mx} value={cfg[k]} onChange={(e) => set(k, Math.max(mn, parseInt(e.target.value)||mn))} disabled={on}
-              style={{ background:"#252830", border:"1px solid #3a3d47", borderRadius:5, color: on ? "#555" : "#ddd", fontFamily:"monospace", fontSize:13, padding:"4px 8px", width:"100%", outline:"none" }} />
+              style={{ background:"#252830", border:"1px solid #3a3d47", borderRadius:RAD.sm, color: on ? "#555" : "#ddd", fontFamily:"monospace", fontSize:FS.small, padding:"4px 8px", width:"100%", outline:"none" }} />
           </div>
         ))}
-        <div style={{ display:"flex", flexDirection:"column", gap:3, minWidth:90 }}>
-          <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>AL LLEGAR AL MÁX</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:SP.xs, minWidth:90 }}>
+          <div style={etiqueta()}>AL LLEGAR AL MÁX</div>
           <select value={cfg.onMax} onChange={(e) => set("onMax",e.target.value)} disabled={on}
-            style={{ background:"#252830", border:"1px solid #3a3d47", borderRadius:5, color: on ? "#555" : "#ddd", fontFamily:"monospace", fontSize:11, padding:"4px 6px", outline:"none", cursor:"pointer" }}>
+            style={{ background:"#252830", border:"1px solid #3a3d47", borderRadius:RAD.sm, color: on ? "#555" : "#ddd", fontFamily:"monospace", fontSize:FS.small, padding:"4px 6px", outline:"none", cursor:"pointer" }}>
             <option value="stop">Detener</option>
             <option value="hold">Mantener</option>
             <option value="restart">Reiniciar</option>
@@ -973,20 +997,20 @@ function ProgressivePractice({ onBpmChange, onActivate, running, onStatus }) {
         </div>
       </div>
       {on && (
-        <div style={{ display:"flex", gap:16, alignItems:"center", background:"#15171c", borderRadius:8, padding:"12px 16px", border:"1px solid #ffd04a22" }}>
+        <div style={{ display:"flex", gap:SP.lg, alignItems:"center", background:"#15171c", borderRadius:RAD.md, padding:"12px 16px", border:"1px solid #ffd04a22" }}>
           <div style={{ textAlign:"center" }}>
-            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:28, color:"#ffd04a", fontWeight:700, lineHeight:1 }}>{curBpm}</div>
-            <div style={{ color:"#555", fontSize:8, fontFamily:"monospace", marginTop:2 }}>BPM ACTUAL</div>
+            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:FS.lead, color:"#ffd04a", fontWeight:700, lineHeight:1 }}>{curBpm}</div>
+            <div style={{ color:TX.muted, fontSize:FS.micro, fontFamily:"monospace", marginTop:2 }}>BPM ACTUAL</div>
           </div>
           <ChevronRight size={14} color="#333" />
           <div style={{ textAlign:"center" }}>
-            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:20, color:"#666", lineHeight:1 }}>{Math.min(curBpm + cfg.increment, cfg.bpmMax)}</div>
-            <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", marginTop:2 }}>PRÓXIMO</div>
+            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:FS.lead, color:TX.faint, lineHeight:1 }}>{Math.min(curBpm + cfg.increment, cfg.bpmMax)}</div>
+            <div style={{ color:TX.muted, fontSize:FS.micro, fontFamily:"monospace", marginTop:2 }}>PRÓXIMO</div>
           </div>
           <div style={{ flex:1 }} />
           <div style={{ textAlign:"center" }}>
-            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:26, fontWeight:700, color: timeLeft <= 10 ? "#ff6b4a" : "#ffd04a", lineHeight:1, transition:"color 0.3s" }}>{fmt(timeLeft)}</div>
-            <div style={{ color:"#555", fontSize:8, fontFamily:"monospace", marginTop:2 }}>PRÓXIMO INCREMENTO</div>
+            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:FS.lead, fontWeight:700, color: timeLeft <= 10 ? "#ff6b4a" : "#ffd04a", lineHeight:1, transition:"color 0.3s" }}>{fmt(timeLeft)}</div>
+            <div style={{ color:TX.muted, fontSize:FS.micro, fontFamily:"monospace", marginTop:2 }}>PRÓXIMO INCREMENTO</div>
           </div>
         </div>
       )}
@@ -1011,21 +1035,21 @@ function PhaseSyncInfo({ bpmA, bpmB, pulseCountA, running }) {
   const valor = same ? "—" : running ? `${remaining} pulsos` : fmt(seconds);
 
   return (
-    <div style={{ background:"#1e2028", borderRadius:12, border:"1px solid #252830" }}>
+    <div style={{ background:"#1e2028", borderRadius:RAD.lg, border:"1px solid #252830" }}>
       <button onClick={() => setOpen((o) => !o)} style={{
         width:"100%", background:"none", border:"none", cursor:"pointer",
-        display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 20px", gap:10,
+        display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 20px", gap:SP.md,
       }}>
-        <span style={{ color:"#555", fontSize:10, fontFamily:"monospace", letterSpacing:2 }}>COINCIDENCIA</span>
-        <span style={{ display:"flex", alignItems:"center", gap:12 }}>
+        <span style={etiqueta()}>COINCIDENCIA</span>
+        <span style={{ display:"flex", alignItems:"center", gap:SP.md }}>
           {/* plegado ya muestra el número: abrirlo es opcional */}
-          <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:700, color: same ? "#444" : "#ffd04a" }}>
+          <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:FS.body, fontWeight:700, color: same ? "#444" : "#ffd04a" }}>
             {valor}
           </span>
-          <ChevronRight size={14} color="#555" style={{ transform: open ? "rotate(90deg)" : "none", transition:`transform ${DUR.fast}ms ${EASE.entra}` }} />
+          <ChevronRight size={14} color={TX.muted} style={{ transform: open ? "rotate(90deg)" : "none", transition:`transform ${DUR.fast}ms ${EASE.entra}` }} />
         </span>
       </button>
-      <div style={{ display: open ? "block" : "none", padding:"0 20px 16px", color:"#666", fontFamily:"monospace", fontSize:11, lineHeight:1.6 }}>
+      <div style={{ display: open ? "block" : "none", padding:"0 20px 16px", color:TX.faint, fontFamily:"monospace", fontSize:FS.small, lineHeight:1.6 }}>
         {same
           ? "Los dos metrónomos van al mismo BPM, así que nunca se separan."
           : <>Con {Math.round(bpmA)} contra {Math.round(bpmB)} BPM, las dos voces vuelven a caer juntas cada <span style={{ color:"#ffd04a", fontWeight:700 }}>{fmt(seconds)}</span> — {targetA} pulsos de A.</>}
@@ -1045,8 +1069,8 @@ function SeqNum({ value, values, onChange, stop }) {
   return (
     <select value={value} onChange={(e) => onChange(Number(e.target.value))}
       onClick={stop ? (e) => e.stopPropagation() : undefined} style={{
-      background:"#252830", border:"1px solid #3a3d47", borderRadius:5, color:"#ddd",
-      fontFamily:"'JetBrains Mono',monospace", fontSize:12, padding:"3px 2px",
+      background:"#252830", border:"1px solid #3a3d47", borderRadius:RAD.sm, color:"#ddd",
+      fontFamily:"'JetBrains Mono',monospace", fontSize:FS.small, padding:"3px 2px",
       outline:"none", cursor:"pointer", width:40, textAlign:"center",
     }}>
       {values.map((v) => <option key={v} value={v}>{v}</option>)}
@@ -1059,7 +1083,7 @@ function SeqNum({ value, values, onChange, stop }) {
 // en esta vuelta quedan tenues, y los que faltan, vacíos.
 function MeasureDots({ total, current }) {
   return (
-    <div style={{ display:"flex", gap:5, flexWrap:"wrap", justifyContent:"flex-end" }}>
+    <div style={{ display:"flex", gap:SP.sm, flexWrap:"wrap", justifyContent:"flex-end" }}>
       {Array.from({ length: total }, (_, i) => {
         const ahora = current === i, pasado = current != null && i < current;
         return (
@@ -1082,13 +1106,13 @@ function SequenceColumn({ steps, onSteps, on, onToggle, pos, sel, onSel, accent,
   const add = () => onSteps([...steps, normalizeStep({ measures:1, num:4, den:4 })]);
   return (
     <div style={{
-      flex:1, minWidth:250, display:"flex", flexDirection:"column", gap:6,
-      border:`1px solid ${on ? accent : accent + "33"}`, borderRadius:10, padding:10,
+      flex:1, minWidth:250, display:"flex", flexDirection:"column", gap:SP.sm,
+      border:`1px solid ${on ? accent : accent + "33"}`, borderRadius:RAD.lg, padding:10,
       transition:"border-color 0.25s",
     }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
-        <span style={{ color:accent, fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:700 }}>
-          {label} <span style={{ color:"#666", fontWeight:400 }}>{sequenceLabel(steps)}</span>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:SP.sm }}>
+        <span style={{ color:accent, fontFamily:"'JetBrains Mono',monospace", fontSize:FS.small, fontWeight:700 }}>
+          {label} <span style={{ color:TX.faint, fontWeight:400 }}>{sequenceLabel(steps)}</span>
         </span>
       </div>
       {steps.map((s, i) => {
@@ -1099,42 +1123,42 @@ function SequenceColumn({ steps, onSteps, on, onToggle, pos, sel, onSel, accent,
             onClick={() => onSel(elegido ? null : i)}
             title={elegido ? "Editando los acentos de este paso — clic para soltar" : "Clic para editar los acentos de este paso"}
             style={{
-            borderRadius:7, cursor:"pointer",
+            borderRadius:RAD.md, cursor:"pointer",
             background: elegido ? accent + "22" : live ? accent + "14" : "transparent",
             border:`1px solid ${elegido ? accent : live ? accent + "66" : "transparent"}`,
             opacity: s.muted ? 0.45 : 1, transition:"background 0.15s, border-color 0.15s",
           }}>
-            <div style={{ display:"flex", alignItems:"center", gap:7, padding:"5px 8px" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:SP.sm, padding:"5px 8px" }}>
               <button onClick={(e) => { e.stopPropagation(); set(i, { muted: !s.muted }); }} style={{
                 width:9, height:9, borderRadius:"50%", padding:0, cursor:"pointer", flexShrink:0,
                 background: s.muted ? "transparent" : accent,
                 border:`1px solid ${s.muted ? "#555" : accent}`,
               }} />
               <SeqNum stop value={s.measures} values={MEASURE_VALUES} onChange={(v) => set(i, { measures:v })} />
-              <span style={{ color:"#555", fontSize:11 }}>×</span>
+              <span style={{ color:TX.muted, fontSize:FS.small }}>×</span>
               <SeqNum stop value={s.num} values={range(1, MAX_NUM)} onChange={(v) => set(i, { num:v, groups:null })} />
-              <span style={{ color:"#555", fontSize:12 }}>/</span>
+              <span style={{ color:TX.muted, fontSize:FS.small }}>/</span>
               <SeqNum stop value={s.den} values={DEN_VALUES} onChange={(v) => set(i, { den:v })} />
               <div style={{ flex:1, display:"flex", justifyContent:"flex-end", padding:"4px 0" }}>
                 <MeasureDots total={s.measures} current={live ? pos?.measureInStep : null} />
               </div>
               <button onClick={(e) => { e.stopPropagation(); del(i); }} style={{
-                background:"none", border:"none", color:"#555", cursor:"pointer",
-                fontSize:12, padding:"0 2px", flexShrink:0,
+                background:"none", border:"none", color:TX.muted, cursor:"pointer",
+                fontSize:FS.small, padding:"0 2px", flexShrink:0,
               }}>✕</button>
             </div>
           </div>
         );
       })}
-      <div style={{ display:"flex", alignItems:"center", gap:10, paddingLeft:8 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:SP.md, paddingLeft:8 }}>
         <button onClick={add} style={{
-          background:"none", border:"1px dashed #3a3d47", borderRadius:14, color:"#777",
-          fontFamily:"monospace", fontSize:13, lineHeight:1, padding:"4px 12px", cursor:"pointer",
+          background:"none", border:"1px dashed #3a3d47", borderRadius:14, color:TX.faint,
+          fontFamily:"monospace", fontSize:FS.small, lineHeight:1, padding:"4px 12px", cursor:"pointer",
         }}>+</button>
         <div style={{ flex:1 }} />
         <button onClick={onToggle} style={{
-          background: on ? accent : "transparent", border:`1px solid ${accent}`, borderRadius:6,
-          color: on ? "#15171c" : accent, fontFamily:"monospace", fontSize:10, fontWeight:600,
+          background: on ? accent : "transparent", border:`1px solid ${accent}`, borderRadius:RAD.sm,
+          color: on ? "#15171c" : accent, fontFamily:"monospace", fontSize:FS.micro, fontWeight:600,
           letterSpacing:1, padding:"7px 16px", cursor:"pointer",
         }}>{on ? "PARAR" : "INICIAR"}</button>
       </div>
@@ -1159,8 +1183,8 @@ function SequencePractice({
   const guardar = () => { if (nombre.trim()) { onSavePreset(nombre, stepsDe(destino)); setNombre(""); } };
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-      <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+    <div style={{ display:"flex", flexDirection:"column", gap:SP.md }}>
+      <div style={{ display:"flex", gap:SP.md, flexWrap:"wrap" }}>
         <SequenceColumn steps={stepsA} onSteps={onStepsA} on={onA} onToggle={onToggleA}
           pos={posA} sel={selA} onSel={onSelA} accent="#ff6b4a" label="A" />
         {dobleDisponible && (
@@ -1170,24 +1194,24 @@ function SequencePractice({
       </div>
 
       {!dobleDisponible && (
-        <div style={{ color:"#555", fontSize:10, fontFamily:"monospace", lineHeight:1.5 }}>
+        <div style={{ color:TX.muted, fontSize:FS.micro, fontFamily:"monospace", lineHeight:1.5 }}>
           La secuencia de B vive en DUAL TEMPO, el único modo con BPM independientes por voz.
         </div>
       )}
 
       {/* presets: guardar una secuencia con nombre y cargarla en la voz que elijas */}
-      <div style={{ borderTop:"1px solid #252830", paddingTop:10, display:"flex", flexDirection:"column", gap:8 }}>
-        <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
+      <div style={{ borderTop:"1px solid #252830", paddingTop:10, display:"flex", flexDirection:"column", gap:SP.sm }}>
+        <div style={{ display:"flex", gap:SP.sm, alignItems:"center", flexWrap:"wrap" }}>
           {dobleDisponible && (
-            <div style={{ display:"flex", gap:3 }}>
+            <div style={{ display:"flex", gap:SP.xs }}>
               {["A","B"].map((v) => {
                 const on = destino === v;
                 const c = v === "A" ? "#ff6b4a" : "#4ad9ff";
                 return (
                   <button key={v} onClick={() => setDestino(v)} title={`Guardar y cargar en ${v}`} style={{
                     background: on ? c : "transparent", border:`1px solid ${on ? c : "#3a3d47"}`,
-                    borderRadius:5, color: on ? "#15171c" : "#666",
-                    fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:700,
+                    borderRadius:RAD.sm, color: on ? "#15171c" : "#666",
+                    fontFamily:"'JetBrains Mono',monospace", fontSize:FS.small, fontWeight:700,
                     padding:"5px 10px", cursor:"pointer",
                   }}>{v}</button>
                 );
@@ -1198,30 +1222,30 @@ function SequencePractice({
             onKeyDown={(e) => { if (e.key === "Enter") guardar(); }}
             placeholder="Nombre del preset"
             style={{
-              flex:1, minWidth:120, background:"#252830", border:"1px solid #3a3d47", borderRadius:5,
-              color:"#ddd", fontFamily:"monospace", fontSize:11, padding:"5px 8px", outline:"none",
+              flex:1, minWidth:120, background:"#252830", border:"1px solid #3a3d47", borderRadius:RAD.sm,
+              color:"#ddd", fontFamily:"monospace", fontSize:FS.small, padding:"5px 8px", outline:"none",
             }} />
           <button onClick={guardar} disabled={!nombre.trim()} style={{
-            background:"none", border:`1px solid ${nombre.trim() ? SEQ_ACC : "#3a3d47"}`, borderRadius:5,
-            color: nombre.trim() ? SEQ_ACC : "#444", fontFamily:"monospace", fontSize:10, fontWeight:600,
+            background:"none", border:`1px solid ${nombre.trim() ? SEQ_ACC : "#3a3d47"}`, borderRadius:RAD.sm,
+            color: nombre.trim() ? SEQ_ACC : "#444", fontFamily:"monospace", fontSize:FS.micro, fontWeight:600,
             padding:"6px 12px", cursor: nombre.trim() ? "pointer" : "default", letterSpacing:1, flexShrink:0,
           }}>GUARDAR</button>
         </div>
         {presets?.length > 0 && (
-          <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+          <div style={{ display:"flex", gap:SP.sm, flexWrap:"wrap" }}>
             {presets.map((p) => (
               <span key={p.name} style={{
-                display:"inline-flex", alignItems:"center", gap:5,
-                background:"#252830", border:"1px solid #3a3d47", borderRadius:12, padding:"3px 4px 3px 10px",
+                display:"inline-flex", alignItems:"center", gap:SP.sm,
+                background:"#252830", border:"1px solid #3a3d47", borderRadius:RAD.lg, padding:"3px 4px 3px 10px",
               }}>
                 <button onClick={() => cargarEn(destino, p.steps)}
                   title={`${sequenceLabel(p.steps)} — cargar en ${dobleDisponible ? destino : "A"}`} style={{
                   background:"none", border:"none", color:"#bbb", cursor:"pointer",
-                  fontFamily:"monospace", fontSize:10, padding:0,
+                  fontFamily:"monospace", fontSize:FS.micro, padding:0,
                 }}>{p.name}</button>
                 <button onClick={() => onDeletePreset(p.name)} title="Borrar preset" style={{
-                  background:"none", border:"none", color:"#555", cursor:"pointer",
-                  fontSize:10, lineHeight:1, padding:"0 3px",
+                  background:"none", border:"none", color:TX.muted, cursor:"pointer",
+                  fontSize:FS.micro, lineHeight:1, padding:"0 3px",
                 }}>✕</button>
               </span>
             ))}
@@ -1241,60 +1265,60 @@ function PracticePanel({ onBpmChange, onActivate, running, status, onStatus,
   const [tab, setTab]   = useState("prog");
   const active = status?.progOn || seq.onA || seq.onB;
   return (
-    <div style={{ background:"#1e2028", borderRadius:12, border:`1px solid ${active ? "#ffd04a44" : "#252830"}`, transition:"border-color 0.3s" }}>
+    <div style={{ background:"#1e2028", borderRadius:RAD.lg, border:`1px solid ${active ? "#ffd04a44" : "#252830"}`, transition:"border-color 0.3s" }}>
       <button onClick={() => setOpen((o) => !o)} style={{
         width:"100%", background:"none", border:"none", cursor:"pointer",
-        display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 20px", gap:10,
+        display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 20px", gap:SP.md,
       }}>
-        <span style={{ color:"#555", fontSize:10, fontFamily:"monospace", letterSpacing:2 }}>PRÁCTICA</span>
-        <span style={{ display:"flex", alignItems:"center", gap:12 }}>
+        <span style={etiqueta()}>PRÁCTICA</span>
+        <span style={{ display:"flex", alignItems:"center", gap:SP.md }}>
           {status?.progOn && (
-            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:700, color:"#ffd04a" }}>
+            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:FS.body, fontWeight:700, color:"#ffd04a" }}>
               ▲ {fmtMMSS(status.progLeft)}
             </span>
           )}
           {seq.onA && (
-            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:"#ff6b4a" }}>
+            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:FS.small, color:"#ff6b4a" }}>
               {sequenceLabel(seq.stepsA)}
             </span>
           )}
           {seq.onB && (
-            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:"#4ad9ff" }}>
+            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:FS.small, color:"#4ad9ff" }}>
               {sequenceLabel(seq.stepsB)}
             </span>
           )}
-          <ChevronRight size={14} color="#555" style={{ transform: open ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
+          <ChevronRight size={14} color={TX.muted} style={{ transform: open ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
         </span>
       </button>
-      <div style={{ display: open ? "flex" : "none", flexDirection:"column", gap:12, padding:"0 16px 16px" }}>
+      <div style={{ display: open ? "flex" : "none", flexDirection:"column", gap:SP.md, padding:"0 16px 16px" }}>
         {/* Vale para los tres modos y también para la secuencia, así que vive
             fuera de las pestañas. */}
-        <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-          <span style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1 }}>CUENTA DE ENTRADA</span>
-          <div style={{ display:"flex", gap:4 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:SP.md, flexWrap:"wrap" }}>
+          <span style={etiqueta()}>CUENTA DE ENTRADA</span>
+          <div style={{ display:"flex", gap:SP.xs }}>
             {[[0,"NO"],[1,"1 COMPÁS"],[2,"2 COMPASES"]].map(([v, lbl]) => {
               const on = countIn === v;
               return (
                 <button key={v} onClick={() => onCountIn(v)} style={{
                   background: on ? "#ffd04a" : "#252830",
                   border:`1px solid ${on ? "#ffd04a" : "#3a3d47"}`,
-                  borderRadius:5, color: on ? "#15171c" : "#666",
-                  fontFamily:"monospace", fontSize:10, fontWeight: on ? 700 : 400,
+                  borderRadius:RAD.sm, color: on ? "#15171c" : "#666",
+                  fontFamily:"monospace", fontSize:FS.micro, fontWeight: on ? 700 : 400,
                   padding:"5px 10px", cursor:"pointer",
                 }}>{lbl}</button>
               );
             })}
           </div>
         </div>
-        <div style={{ display:"flex", background:"#15171c", borderRadius:8, padding:3, gap:2 }}>
+        <div style={{ display:"flex", background:"#15171c", borderRadius:RAD.md, padding:3, gap:SP.xs }}>
           {[["prog","PROGRESIVA"],["seq","SECUENCIA"]].map(([k, lbl]) => {
             const on = tab === k;
             return (
               <button key={k} onClick={() => setTab(k)} style={{
                 flex:1, background: on ? "#ffd04a1a" : "none",
                 border:`1px solid ${on ? "#ffd04a" : "transparent"}`,
-                borderRadius:6, color: on ? "#ffd04a" : "#444",
-                fontFamily:"monospace", fontSize:10, fontWeight: on ? 600 : 400,
+                borderRadius:RAD.sm, color: on ? "#ffd04a" : "#444",
+                fontFamily:"monospace", fontSize:FS.micro, fontWeight: on ? 600 : 400,
                 padding:"7px 10px", cursor:"pointer", letterSpacing:0.5,
               }}>{lbl}</button>
             );
@@ -1327,7 +1351,7 @@ function BeatLights({ metA, metB, runningA, runningB, measuresA, measuresB, enab
     pointerEvents:"none", zIndex:998,
     background: on ? color : "transparent",
     transition:"none",
-    display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:6,
+    display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:SP.sm,
   });
   const numStyle = (on, color, visible) => ({
     fontFamily:"'JetBrains Mono',monospace", fontWeight:800, lineHeight:1,
@@ -1337,7 +1361,7 @@ function BeatLights({ metA, metB, runningA, runningB, measuresA, measuresB, enab
     transition:"none",
   });
   const subStyle = (on, color, visible) => ({
-    fontFamily:"monospace", fontSize:18, letterSpacing:3, fontWeight:600,
+    fontFamily:"monospace", fontSize:FS.lead, letterSpacing:3, fontWeight:600,
     color: on ? "#15171c" : color,
     opacity: visible ? (on ? 0.8 : 0.28) : 0,
     transition:"none",
@@ -1363,7 +1387,7 @@ function FlashToggle({ on, onToggle }) {
     <button onClick={onToggle} title={on ? "Desactivar destello de pantalla" : "Activar destello de pantalla"} style={{
       position:"fixed", top:16, right:16, zIndex:1000,
       display:"flex", alignItems:"center", justifyContent:"center",
-      width:40, height:40, borderRadius:10,
+      width:40, height:40, borderRadius:RAD.lg,
       background: on ? "#ffd04a1a" : "#1e2028",
       border:`1px solid ${on ? "#ffd04a" : "#3a3d47"}`,
       color: on ? "#ffd04a" : "#555",
@@ -1381,7 +1405,7 @@ function CircleFullscreenToggle({ on, onToggle }) {
     <button onClick={onToggle} title={on ? "Salir de pantalla completa" : "Ver animación en pantalla completa"} style={{
       position:"fixed", top:16, right:64, zIndex:1000,
       display:"flex", alignItems:"center", justifyContent:"center",
-      width:40, height:40, borderRadius:10,
+      width:40, height:40, borderRadius:RAD.lg,
       background: on ? "#eeeeee1a" : "#1e2028",
       border:`1px solid ${on ? "#eee" : "#3a3d47"}`,
       color: on ? "#eee" : "#555",
@@ -1407,7 +1431,7 @@ function AccentDots({ total, groups, onChange, accent }) {
     onChange(groupsFromIndices(next, total));
   };
   return (
-    <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+    <div style={{ display:"flex", gap:SP.sm, flexWrap:"wrap" }}>
       {Array.from({ length: total }, (_, i) => (
         <button key={i} onClick={() => toggle(i)} disabled={i === 0} style={{
           width:15, height:15, borderRadius:"50%", padding:0, cursor: i === 0 ? "default" : "pointer",
@@ -1423,43 +1447,43 @@ function AccentDots({ total, groups, onChange, accent }) {
 function SyncControls({ metA, metB, onChangeA, onChangeB }) {
   const [open, setOpen] = useState(false);
   return (
-    <div style={{ maxWidth:680, margin:"0 auto 18px", background:"#1e2028", borderRadius:12, border:"1px solid #252830" }}>
+    <div style={{ maxWidth:ANCHO, margin:"0 auto 18px", background:"#1e2028", borderRadius:RAD.lg, border:"1px solid #252830" }}>
       <button onClick={() => setOpen((o) => !o)} style={{
         width:"100%", background:"none", border:"none", cursor:"pointer",
         display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 20px",
       }}>
-        <span style={{ color:"#555", fontSize:10, fontFamily:"monospace", letterSpacing:2 }}>SONIDO Y VOLUMEN</span>
-        <ChevronRight size={14} color="#555" style={{ transform: open ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
+        <span style={etiqueta()}>SONIDO Y VOLUMEN</span>
+        <ChevronRight size={14} color={TX.muted} style={{ transform: open ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
       </button>
-      <div style={{ display: open ? "flex" : "none", flexDirection:"column", gap:16, padding:"0 20px 16px" }}>
+      <div style={{ display: open ? "flex" : "none", flexDirection:"column", gap:SP.lg, padding:"0 20px 16px" }}>
 
       {/* volume row */}
-      <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
+      <div style={{ display:"flex", gap:SP.lg, flexWrap:"wrap" }}>
         {[
           { label:"A", accent:"#ff6b4a", met:metA, onChange:onChangeA },
           { label:"B", accent:"#4ad9ff", met:metB, onChange:onChangeB },
         ].map(({ label, accent, met, onChange }) => (
           <div key={label} style={{ flex:1, minWidth:200 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:SP.sm }}>
               <button onClick={() => onChange({ muted: !met.muted })} style={{ background:"none", border:"none", cursor:"pointer", color: met.muted ? "#333" : accent, padding:2 }}>
                 {met.muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
               </button>
               <input type="range" min={0} max={1} step={0.01} value={met.volume}
                 onChange={(e) => onChange({ volume: parseFloat(e.target.value) })}
                 style={{ flex:1, accentColor:accent }} disabled={met.muted} />
-              <span style={{ color:"#444", fontSize:9, fontFamily:"monospace", width:26, textAlign:"right" }}>{Math.round(met.volume * 100)}</span>
+              <span style={{ color:TX.muted, fontSize:FS.micro, fontFamily:"monospace", width:26, textAlign:"right" }}>{Math.round(met.volume * 100)}</span>
             </div>
           </div>
         ))}
       </div>
 
       {/* sound pickers row */}
-      <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
+      <div style={{ display:"flex", gap:SP.lg, flexWrap:"wrap" }}>
         {[
           { label:"A", accent:"#ff6b4a", met:metA, onChange:onChangeA },
           { label:"B", accent:"#4ad9ff", met:metB, onChange:onChangeB },
         ].map(({ label, accent, met, onChange }) => (
-          <div key={label} style={{ flex:1, minWidth:200, display:"flex", flexDirection:"column", gap:8 }}>
+          <div key={label} style={{ flex:1, minWidth:200, display:"flex", flexDirection:"column", gap:SP.sm }}>
             <SoundSelect label="FUERTE" value={met.strongSound}
               onChange={(v) => onChange({ strongSound: v })} accent={accent} />
             <SoundSelect label="DÉBIL" value={met.weakSound}
@@ -1482,48 +1506,48 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap
   const remaining = cycleRemaining(pulseCount, lcmAB);
   const [open, setOpen] = useState(true);
   return (
-    <div style={{ background:"#1e2028", borderRadius:12, maxWidth:680, margin:"0 auto", border:"1px solid #252830" }}>
+    <div style={{ background:"#1e2028", borderRadius:RAD.lg, maxWidth:ANCHO, margin:"0 auto", border:"1px solid #252830" }}>
       <button onClick={() => setOpen((o) => !o)} style={{
         width:"100%", background:"none", border:"none", cursor:"pointer",
         display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 20px",
       }}>
-        <span style={{ color:"#555", fontSize:10, fontFamily:"monospace", letterSpacing:2 }}>BPM Y RELACIÓN</span>
-        <ChevronRight size={14} color="#555" style={{ transform: open ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
+        <span style={etiqueta()}>BPM Y RELACIÓN</span>
+        <ChevronRight size={14} color={TX.muted} style={{ transform: open ? "rotate(90deg)" : "none", transition:"transform 0.15s" }} />
       </button>
-      <div style={{ display: open ? "flex" : "none", flexDirection:"column", gap:18, padding:"0 24px 20px" }}>
+      <div style={{ display: open ? "flex" : "none", flexDirection:"column", gap:SP.lg, padding:"0 24px 20px" }}>
       {/* BPM compartido */}
       <div>
-        <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:2, marginBottom:8 }}>BPM</div>
-        <div style={{ display:"flex", alignItems:"center", gap:16 }}>
+        <div style={{ ...etiqueta(), marginBottom:SP.sm }}>BPM</div>
+        <div style={{ display:"flex", alignItems:"center", gap:SP.lg }}>
           <div style={{
-            fontFamily:"'JetBrains Mono',monospace", fontSize:52, fontWeight:700, lineHeight:1, minWidth:96,
+            fontFamily:"'JetBrains Mono',monospace", fontSize:FS.hero, fontWeight:700, lineHeight:1, minWidth:96,
             color: bpmFlash ? "#ffd04a" : "#4aff9a",
             textShadow: bpmFlash ? "0 0 18px #ffd04a" : "none",
             transition: bpmFlash ? "none" : "color 0.45s, text-shadow 0.45s",
           }}>{bpm}</div>
-          <div style={{ flex:1, display:"flex", flexDirection:"column", gap:6 }}>
+          <div style={{ flex:1, display:"flex", flexDirection:"column", gap:SP.sm }}>
             <input type="range" min={1} max={600} value={bpm} onChange={(e) => onBpm(parseInt(e.target.value))} style={{ width:"100%", accentColor:"#4aff9a" }} />
-            <div style={{ display:"flex", gap:5 }}>
+            <div style={{ display:"flex", gap:SP.sm }}>
               {[-10,-1,+1,+10].map((d) => (
-                <button key={d} onClick={() => onBpm(Math.min(600, Math.max(1, bpm + d)))} style={{ background:"#252830", border:"1px solid #4aff9a33", borderRadius:5, color:"#4aff9a", fontFamily:"monospace", fontSize:11, padding:"4px 9px", cursor:"pointer" }}>{d > 0 ? `+${d}` : d}</button>
+                <button key={d} onClick={() => onBpm(Math.min(600, Math.max(1, bpm + d)))} style={{ background:"#252830", border:"1px solid #4aff9a33", borderRadius:RAD.sm, color:"#4aff9a", fontFamily:"monospace", fontSize:FS.small, padding:"4px 9px", cursor:"pointer" }}>{d > 0 ? `+${d}` : d}</button>
               ))}
             </div>
-            <button onClick={onTap} style={{ background:"#4aff9a14", border:"1px solid #4aff9a44", borderRadius:7, color:"#4aff9a", fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1, marginTop:4 }}>TAP TEMPO</button>
+            <button onClick={onTap} style={{ background:"#4aff9a14", border:"1px solid #4aff9a44", borderRadius:RAD.md, color:"#4aff9a", fontFamily:"'JetBrains Mono',monospace", fontSize:FS.small, fontWeight:600, padding:"8px", cursor:"pointer", letterSpacing:1, marginTop:4 }}>TAP TEMPO</button>
           </div>
         </div>
       </div>
 
       {/* selectores de tiempos y acentos — el acento define la métrica, así que
           vive junto al número de pulsos, no junto al volumen */}
-      <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
+      <div style={{ display:"flex", gap:SP.xl, flexWrap:"wrap" }}>
         {[
           { label:"A", color:"#ff6b4a", val:beatsA, set:onBeatsA, met:metA, onChange:onChangeA },
           { label:"B", color:"#4ad9ff", val:beatsB, set:onBeatsB, met:metB, onChange:onChangeB },
         ].map(({ label, color, val, set, met, onChange }) => (
-          <div key={label} style={{ flex:1, minWidth:200, display:"flex", flexDirection:"column", gap:10 }}>
+          <div key={label} style={{ flex:1, minWidth:200, display:"flex", flexDirection:"column", gap:SP.md }}>
             <NumberSelect label={label} value={val} values={PULSE_VALUES} onChange={set} accent={color} />
             <div>
-              <div style={{ color:"#555", fontSize:9, fontFamily:"monospace", letterSpacing:1, marginBottom:6 }}>
+              <div style={{ ...etiqueta(), marginBottom:SP.sm }}>
                 ACENTOS{(label === "A" ? accentViewA : accentViewB) && (
                   <span style={{ color:"#ffd04a", marginLeft:6 }}>PASO {(label === "A" ? accentViewA : accentViewB).step}</span>
                 )}
@@ -1538,20 +1562,20 @@ function PolyMetriaPanel({ bpm, beatsA, beatsB, onBpm, onBeatsA, onBeatsB, onTap
       </div>
 
       {/* info MCM */}
-      <div style={{ background:"#15171c", borderRadius:8, padding:"14px 18px", border:"1px solid #252830", display:"flex", gap:32, flexWrap:"wrap" }}>
+      <div style={{ background:"#15171c", borderRadius:RAD.md, padding:"14px 18px", border:"1px solid #252830", display:"flex", gap:SP.xxl, flexWrap:"wrap" }}>
         <div>
-          <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>RELACIÓN</div>
-          <div style={{ color:"#eee", fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, marginTop:3 }}>{beatsA}:{beatsB}</div>
+          <div style={etiqueta()}>RELACIÓN</div>
+          <div style={{ color:"#eee", fontFamily:"'JetBrains Mono',monospace", fontSize:FS.lead, fontWeight:700, marginTop:3 }}>{beatsA}:{beatsB}</div>
         </div>
         <div>
-          <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1 }}>MCM</div>
-          <div style={{ color:"#4aff9a", fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, marginTop:3 }}>{lcmAB}</div>
+          <div style={etiqueta()}>MCM</div>
+          <div style={{ color:"#4aff9a", fontFamily:"'JetBrains Mono',monospace", fontSize:FS.lead, fontWeight:700, marginTop:3 }}>{lcmAB}</div>
         </div>
         <div style={{ flex:1 }}>
-          <div style={{ color:"#444", fontSize:8, fontFamily:"monospace", letterSpacing:1, marginBottom:4 }}>COINCIDENCIA</div>
-          <div style={{ color:"#666", fontFamily:"monospace", fontSize:12 }}>
+          <div style={{ ...etiqueta(), marginBottom:SP.sm }}>COINCIDENCIA</div>
+          <div style={{ color:TX.faint, fontFamily:"monospace", fontSize:FS.small }}>
             {running
-              ? <><span style={{ color:"#4aff9a", fontWeight:700, fontSize:16 }}>{remaining}</span> pulsos</>
+              ? <><span style={{ color:"#4aff9a", fontWeight:700, fontSize:FS.body }}>{remaining}</span> pulsos</>
               : <>cada <span style={{ color:"#4aff9a", fontWeight:700 }}>{lcmAB}</span> pulsos</>}
           </div>
         </div>
@@ -2299,17 +2323,17 @@ export default function DualMetronome() {
   const performanceMode = lightsMode || circleFsMode;
 
   return (
-    <div style={{ minHeight:"100vh", background:"#15171c", color:"#ddd", fontFamily:"system-ui,sans-serif", padding: performanceMode ? 0 : "24px 16px", boxSizing:"border-box" }}>
+    <div style={{ minHeight:"100vh", background:"#15171c", color:"#ddd", fontFamily:"system-ui,sans-serif", padding: performanceMode ? 0 : `${SP.xl}px ${SP.lg}px ${TRANSPORTE + SP.xl}px`, boxSizing:"border-box" }}>
       <BeatLights metA={metA} metB={metB} runningA={runningA} runningB={runningB} measuresA={measuresA} measuresB={measuresB} enabled={lightsMode} />
       {audioError && (
         <div style={{
           position:"fixed", top:0, left:0, right:0, zIndex:2000,
           background:"#3d1010", borderBottom:"1px solid #ff4a4a", color:"#ffb4b4",
-          fontFamily:"monospace", fontSize:12, padding:"10px 16px",
-          display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+          fontFamily:"monospace", fontSize:FS.small, padding:"10px 16px",
+          display:"flex", alignItems:"center", justifyContent:"space-between", gap:SP.md,
         }}>
           <span>{audioError}</span>
-          <button onClick={() => setAudioError(null)} style={{ background:"none", border:"none", color:"#ffb4b4", cursor:"pointer", fontSize:16, lineHeight:1, padding:"0 4px" }}>×</button>
+          <button onClick={() => setAudioError(null)} style={{ background:"none", border:"none", color:"#ffb4b4", cursor:"pointer", fontSize:FS.body, lineHeight:1, padding:"0 4px" }}>×</button>
         </div>
       )}
       {circleFsMode && (
@@ -2336,7 +2360,7 @@ export default function DualMetronome() {
       <button onClick={() => setVizStyle((v) => (v === "rings" ? "necklace" : v === "necklace" ? "tree" : "rings"))} title="Cambiar estilo de visualizador" style={{
         position:"fixed", top:16, left:16, zIndex:1000,
         width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center",
-        background:"#ffd04a1a", border:"1px solid #ffd04a", borderRadius:10,
+        background:"#ffd04a1a", border:"1px solid #ffd04a", borderRadius:RAD.lg,
         color:"#ffd04a", cursor:"pointer",
         boxShadow:"0 0 12px #ffd04a44",
       }}>
@@ -2359,7 +2383,7 @@ export default function DualMetronome() {
         width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center",
         background: exportFlash ? "#4aff9a1a" : "#1e2028",
         border:`1px solid ${exportFlash ? "#4aff9a" : "#3a3d47"}`,
-        borderRadius:10, color: exportFlash ? "#4aff9a" : "#888", cursor:"pointer",
+        borderRadius:RAD.lg, color: exportFlash ? "#4aff9a" : "#888", cursor:"pointer",
         boxShadow: exportFlash ? "0 0 12px #4aff9a44" : "none",
       }}>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -2373,7 +2397,7 @@ export default function DualMetronome() {
       <>
       {/* header */}
       <div style={{ textAlign:"center", marginBottom:18 }}>
-        <h1 style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:700, color:"#eee", margin:0, letterSpacing:4 }}>
+        <h1 style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:FS.lead, fontWeight:700, color:"#eee", margin:0, letterSpacing:4 }}>
           DUAL <span style={{ color:"#ff6b4a" }}>PUL</span><span style={{ color:"#4ad9ff" }}>SE</span>
         </h1>
       </div>
@@ -2386,10 +2410,10 @@ export default function DualMetronome() {
       {/* ── DUAL SINC (polirritmia) ── */}
       {isMetrica && (
         <>
-          <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
+          <div style={{ display:"flex", justifyContent:"center", maxWidth:ANCHO, margin:`0 auto ${SP.xl}px` }}>
             <CircularVisualizer ctxRef={ctxRef} pulsosA={pulsosA} pulsosB={pulsosB} metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={false} vizStyle={vizStyle} />
           </div>
-          <div style={{ maxWidth:680, margin:"0 auto 20px" }}>
+          <div style={{ maxWidth:ANCHO, margin:"0 auto 20px" }}>
             <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} status={practiceStatus} onStatus={updatePracticeStatus}
               seq={seqProps} countIn={countIn} onCountIn={setCountIn} presets={seqPresets} onSavePreset={handleSavePreset} onDeletePreset={handleDeletePreset} />
           </div>
@@ -2411,12 +2435,12 @@ export default function DualMetronome() {
       {/* ── POLIMETRÍA (tercer modo) ── */}
       {isPolimetria && (
         <>
-          <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
+          <div style={{ display:"flex", justifyContent:"center", maxWidth:ANCHO, margin:`0 auto ${SP.xl}px` }}>
             <CircularVisualizer ctxRef={ctxRef} pulsosA={pulsosA} pulsosB={pulsosB} metA={metA} metB={metB} runningA={runningA} runningB={runningB} centerLabel={centerLabel} showSubtitle={false} showMcm={false} vizStyle={vizStyle}
               showCycleRing cycleTargetA={polyTarget} cycleTargetB={polyTarget}
               cyclePulseA={pulseCountA} cyclePulseB={pulseCountA} />
           </div>
-          <div style={{ maxWidth:680, margin:"0 auto 20px" }}>
+          <div style={{ maxWidth:ANCHO, margin:"0 auto 20px" }}>
             <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} status={practiceStatus} onStatus={updatePracticeStatus}
               seq={seqProps} countIn={countIn} onCountIn={setCountIn} presets={seqPresets} onSavePreset={handleSavePreset} onDeletePreset={handleDeletePreset} />
           </div>
@@ -2439,7 +2463,7 @@ export default function DualMetronome() {
       {/* ── DUAL LIBRE ── */}
       {mode === "libre" && (
         <>
-          <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
+          <div style={{ display:"flex", justifyContent:"center", maxWidth:ANCHO, margin:`0 auto ${SP.xl}px` }}>
             <CircularVisualizer ctxRef={ctxRef} pulsosA={pulsosA} pulsosB={pulsosB} metA={metA} metB={metB} runningA={runningA} runningB={runningB}
               centerLabel={centerLabel ?? `${metA.subdivision}:${metB.subdivision}`} showSubtitle={false} showMcm={false}
               totalAOverride={seqOnA ? undefined : metA.subdivision} totalBOverride={seqOnB ? undefined : metB.subdivision}
@@ -2448,15 +2472,15 @@ export default function DualMetronome() {
               showCycleRing cycleTargetA={libreCycleTargetA} cycleTargetB={libreCycleTargetB}
               cyclePulseA={pulseCountA} cyclePulseB={pulseCountB} />
           </div>
-          <div style={{ maxWidth:880, margin:"0 auto 20px" }}>
+          <div style={{ maxWidth:ANCHO, margin:"0 auto 20px" }}>
             <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} status={practiceStatus} onStatus={updatePracticeStatus}
               seq={seqProps} countIn={countIn} onCountIn={setCountIn} presets={seqPresets} onSavePreset={handleSavePreset} onDeletePreset={handleDeletePreset} />
           </div>
-          <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", maxWidth:880, margin:"0 auto 20px" }}>
+          <div style={{ display:"flex", gap:SP.xl, flexWrap:"wrap", justifyContent:"center", maxWidth:ANCHO, margin:"0 auto 20px" }}>
             <MetronomePanel color="A" state={metA} onChange={changeMetA} running={runningA} onToggle={toggleA} measures={measuresA} bpmFlash={bpmFlash} accentView={seqAccentA} />
             <MetronomePanel color="B" state={metB} onChange={changeMetB} running={runningB} onToggle={toggleB} measures={measuresB} bpmFlash={bpmFlash} accentView={seqAccentB} />
           </div>
-          <div style={{ maxWidth:880, margin:"0 auto 90px" }}>
+          <div style={{ maxWidth:ANCHO, margin:"0 auto" }}>
             <PhaseSyncInfo bpmA={metA.bpm} bpmB={metB.bpm} pulseCountA={pulseCountA} running={dualOn} />
           </div>
         </>
