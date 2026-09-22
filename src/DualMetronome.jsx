@@ -1260,7 +1260,7 @@ function SequencePractice({
 // Both children stay mounted (hidden with display:none) so a running timer or
 // progressive session keeps counting while collapsed or on the other tab.
 function PracticePanel({ onBpmChange, onActivate, running, status, onStatus,
-                         seq, countIn, onCountIn, presets, onSavePreset, onDeletePreset }) {
+                         seq, presets, onSavePreset, onDeletePreset }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab]   = useState("prog");
   const active = status?.progOn || seq.onA || seq.onB;
@@ -1291,25 +1291,6 @@ function PracticePanel({ onBpmChange, onActivate, running, status, onStatus,
         </span>
       </button>
       <div style={{ display: open ? "flex" : "none", flexDirection:"column", gap:SP.md, padding:"0 16px 16px" }}>
-        {/* Vale para los tres modos y también para la secuencia, así que vive
-            fuera de las pestañas. */}
-        <div style={{ display:"flex", alignItems:"center", gap:SP.md, flexWrap:"wrap" }}>
-          <span style={etiqueta()}>CUENTA DE ENTRADA</span>
-          <div style={{ display:"flex", gap:SP.xs }}>
-            {[[0,"NO"],[1,"1 COMPÁS"],[2,"2 COMPASES"]].map(([v, lbl]) => {
-              const on = countIn === v;
-              return (
-                <button key={v} onClick={() => onCountIn(v)} style={{
-                  background: on ? "#ffd04a" : "#252830",
-                  border:`1px solid ${on ? "#ffd04a" : "#3a3d47"}`,
-                  borderRadius:RAD.sm, color: on ? "#15171c" : "#666",
-                  fontFamily:"monospace", fontSize:FS.micro, fontWeight: on ? 700 : 400,
-                  padding:"5px 10px", cursor:"pointer",
-                }}>{lbl}</button>
-              );
-            })}
-          </div>
-        </div>
         <div style={{ display:"flex", background:"#15171c", borderRadius:RAD.md, padding:3, gap:SP.xs }}>
           {[["prog","PROGRESIVA"],["seq","SECUENCIA"]].map(([k, lbl]) => {
             const on = tab === k;
@@ -1657,10 +1638,6 @@ export default function DualMetronome() {
   const [seqPresets, setSeqPresets] = useState(() => normalizePresets(savedSettings.seqPresets));
   const handleSavePreset   = useCallback((n, st) => setSeqPresets((l) => savePreset(l, n, st)), []);
   const handleDeletePreset = useCallback((n) => setSeqPresets((l) => deletePreset(l, n)), []);
-  // compases de cuenta de entrada antes del primer pulso: 0, 1 o 2
-  const [countIn, setCountIn] = useState(() => [0,1,2].includes(savedSettings.countIn) ? savedSettings.countIn : 0);
-  const countInRef = useRef(0);
-  useEffect(() => { countInRef.current = countIn; }, [countIn]);
   // Paso seleccionado a mano para editar sus acentos. Sin seleccion, el editor
   // sigue al paso que suena; el problema de eso solo es que tocar un punto justo
   // en el cambio de compas se lo aplicaba al paso que acababa de entrar.
@@ -1927,33 +1904,6 @@ export default function DualMetronome() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metB.subTick]);
 
-  // ── cuenta de entrada ──────────────────────────────────────────────────────
-  // No toca el scheduler: agenda sus propios clicks en la ventana previa y
-  // devuelve cuánto hay que correr el arranque. Todo lo demás sigue empezando
-  // en t0, con la misma grilla de siempre.
-  // Timbre aparte a propósito (clave/rim), para que no se confunda con el
-  // patrón que viene después.
-  const scheduleCountIn = useCallback((ctx, from) => {
-    const bars = countInRef.current;
-    if (!bars) return 0;
-    const met = metARef.current;   // A es la voz de referencia para contar
-    const bpm = met.bpm || 120;
-    let beats, step;
-    if (seqRefA.current) {
-      // con la secuencia encendida se cuenta el compás con el que va a arrancar
-      const first = pulseAt(0, seqRefA.current, bpm);
-      beats = first.num; step = first.seconds;
-    } else {
-      beats = beatsPerMeasure(met.timeSig); step = 60 / bpm;
-    }
-    beats = Math.max(1, beats);
-    const total = beats * bars;
-    for (let i = 0; i < total; i++) {
-      synthClick(ctx, from + i * step, i % beats === 0 ? "clave" : "rim", 0.9, 0);
-    }
-    return total * step;
-  }, []);
-
   const startDual = useCallback(() => {
     // defensive: never stack a second scheduler/context on top of a live one
     clearInterval(schedRef.current); schedRef.current = null;
@@ -1962,15 +1912,14 @@ export default function DualMetronome() {
     setPulseCountA(0); setPulseCountB(0); // fresh cycle
     const ctx = createCtx(); ctxRef.current = ctx;
     if (!ctx) return;
-    const lead = scheduleCountIn(ctx, ctx.currentTime + 0.1);
-    const t0  = ctx.currentTime + 0.1 + lead;
+    const t0  = ctx.currentTime + 0.1;
     nextARef.current = t0; nextBRef.current = t0;
     tickARef.current = 0;  tickBRef.current = 0;
     setMeasuresA(0); setMeasuresB(0);
     runARef.current = true; runBRef.current = true;
     setRunningA(true); setRunningB(true); setDualOn(true);
     scheduleBeats(); schedRef.current = setInterval(scheduleBeats, 25);
-  }, [scheduleBeats, scheduleCountIn]);
+  }, [scheduleBeats]);
 
   // ── individual toggles (DUAL LIBRE only) ──────────────────────────────────
   const toggleA = () => {
@@ -2236,11 +2185,11 @@ export default function DualMetronome() {
   // only stable config, never live playback state — so this can't fire on
   // every beat tick, only when the user actually changes a setting
   const settingsSnapshot = useMemo(() => ({
-    mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB, seqStepsA, seqStepsB, countIn, seqPresets,
+    mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB, seqStepsA, seqStepsB, seqPresets,
     metA: { bpm:metA.bpm, baseBpm:metA.baseBpm, timeSig:metA.timeSig, subdivision:metA.subdivision, strongSound:metA.strongSound, weakSound:metA.weakSound, volume:metA.volume, muted:metA.muted, accentGroups:metA.accentGroups, subAccents:metA.subAccents },
     metB: { bpm:metB.bpm, baseBpm:metB.baseBpm, timeSig:metB.timeSig, subdivision:metB.subdivision, strongSound:metB.strongSound, weakSound:metB.weakSound, volume:metB.volume, muted:metB.muted, accentGroups:metB.accentGroups, subAccents:metB.subAccents },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB, seqStepsA, seqStepsB, countIn, seqPresets,
+  }), [mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB, seqStepsA, seqStepsB, seqPresets,
     metA.bpm, metA.baseBpm, metA.timeSig, metA.subdivision, metA.strongSound, metA.weakSound, metA.volume, metA.muted, metA.accentGroups, metA.subAccents,
     metB.bpm, metB.baseBpm, metB.timeSig, metB.subdivision, metB.strongSound, metB.weakSound, metB.volume, metB.muted, metB.accentGroups, metB.subAccents]);
   useEffect(() => {
@@ -2415,7 +2364,7 @@ export default function DualMetronome() {
           </div>
           <div style={{ maxWidth:ANCHO, margin:"0 auto 20px" }}>
             <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} status={practiceStatus} onStatus={updatePracticeStatus}
-              seq={seqProps} countIn={countIn} onCountIn={setCountIn} presets={seqPresets} onSavePreset={handleSavePreset} onDeletePreset={handleDeletePreset} />
+              seq={seqProps} presets={seqPresets} onSavePreset={handleSavePreset} onDeletePreset={handleDeletePreset} />
           </div>
           <div style={{ marginBottom:20 }}>
             <PoliPanel accentViewA={accentViewA} accentViewB={accentViewB}
@@ -2442,7 +2391,7 @@ export default function DualMetronome() {
           </div>
           <div style={{ maxWidth:ANCHO, margin:"0 auto 20px" }}>
             <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} status={practiceStatus} onStatus={updatePracticeStatus}
-              seq={seqProps} countIn={countIn} onCountIn={setCountIn} presets={seqPresets} onSavePreset={handleSavePreset} onDeletePreset={handleDeletePreset} />
+              seq={seqProps} presets={seqPresets} onSavePreset={handleSavePreset} onDeletePreset={handleDeletePreset} />
           </div>
           <div style={{ marginBottom:20 }}>
             <PolyMetriaPanel accentViewA={accentViewA} accentViewB={accentViewB}
@@ -2474,7 +2423,7 @@ export default function DualMetronome() {
           </div>
           <div style={{ maxWidth:ANCHO, margin:"0 auto 20px" }}>
             <PracticePanel onBpmChange={handlePracticeBpm} onActivate={handlePracticeActivate} running={runningA && runningB} status={practiceStatus} onStatus={updatePracticeStatus}
-              seq={seqProps} countIn={countIn} onCountIn={setCountIn} presets={seqPresets} onSavePreset={handleSavePreset} onDeletePreset={handleDeletePreset} />
+              seq={seqProps} presets={seqPresets} onSavePreset={handleSavePreset} onDeletePreset={handleDeletePreset} />
           </div>
           <div style={{ display:"flex", gap:SP.xl, flexWrap:"wrap", justifyContent:"center", maxWidth:ANCHO, margin:"0 auto 20px" }}>
             <MetronomePanel color="A" state={metA} onChange={changeMetA} running={runningA} onToggle={toggleA} measures={measuresA} bpmFlash={bpmFlash} accentView={seqAccentA} />

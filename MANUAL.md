@@ -215,9 +215,7 @@ Si tienes las dos secuencias encendidas, el archivo trae **una pista por voz**, 
 
 ## Práctica
 
-El panel **PRÁCTICA**, presente en los tres modos, tiene dos pestañas y un ajuste común.
-
-**Cuenta de entrada** — arriba de las pestañas. Elige **NO**, **1 compás** o **2 compases**. Antes del primer pulso suena esa cantidad de compases con un timbre distinto (clave en el 1, rim en el resto), para que no se confunda con el patrón. Vale para los tres modos y también para la secuencia.
+El panel **PRÁCTICA**, presente en los tres modos, tiene dos pestañas.
 
 **PROGRESIVA** — sube el BPM automáticamente en pasos: BPM inicial (desde 30), BPM máximo, incremento y segundos entre pasos (desde 1 segundo). Al llegar al máximo puedes elegir que se detenga, se mantenga o vuelva a empezar.
 
@@ -244,7 +242,7 @@ Ambas pestañas siguen corriendo aunque colapses el panel o cambies de pestaña;
 
 ## Guardar configuraciones
 
-La app **guarda automáticamente** el estado de ambos metrónomos (BPM, compás, subdivisión, sonidos, volumen, mute) y los parámetros de cada modo en el almacenamiento local del programa, bajo la clave `dualpulse-settings-v1`. Al volver a abrir la app, retoma donde quedaste. El estado guardado incluye la secuencia, la cuenta de entrada y los presets de secuencia.
+La app **guarda automáticamente** el estado de ambos metrónomos (BPM, compás, subdivisión, sonidos, volumen, mute) y los parámetros de cada modo en el almacenamiento local del programa, bajo la clave `dualpulse-settings-v1`. Al volver a abrir la app, retoma donde quedaste. El estado guardado incluye la secuencia y los presets de secuencia.
 
 Lo único con guardado manual son los **presets de secuencia** (pestaña SECUENCIA): esos sí se guardan con un nombre que eliges tú.
 

@@ -31,7 +31,7 @@ click* y acentos aditivos por paso. En DUAL TEMPO **cada metrónomo lleva su pro
 secuencia**, con su métrica y su tempo: A en 5/4 a 90 contra B en 7/8 a 120, por ejemplo.
 
 Además: subdivisiones hasta 21 con sus propios acentos, acentos aditivos, tap tempo, práctica
-progresiva con cambio de tempo continuo (sin cortes), cuenta de entrada, presets de secuencia,
+progresiva con cambio de tempo continuo (sin cortes), presets de secuencia,
 visualizador con tres estilos —dos circulares y un árbol de métrica—, y **exportación del patrón a un archivo `.mid`** exacto
 por construcción, con los cambios de compás de la secuencia incluidos.
 
