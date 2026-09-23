@@ -484,7 +484,7 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
         // escala en vez de radio: el radio obliga a repintar, la escala no
         const k = on ? 1 + brillo * 0.9 : 1;
         el.setAttribute("transform", `translate(${el.dataset.cx} ${el.dataset.cy}) scale(${k.toFixed(3)}) translate(-${el.dataset.cx} -${el.dataset.cy})`);
-        el.setAttribute("opacity", on ? 1 : 0.55);
+        el.setAttribute("opacity", on ? 1 : 0.5);
         if (on) el.setAttribute("fill", HOT);
         else el.setAttribute("fill", el.dataset.base);
       }
@@ -492,11 +492,14 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
       if (halo.current) {
         const h = halo.current;
         if (activo >= 0) {
-          const p = plan_.layout.leaves[activo];
-          h.setAttribute("cx", p.x);
-          h.setAttribute("cy", BAR + (arriba ? -12 : 12));
+          // el halo se centra en el SEGMENTO que suena, no en su borde
+          const ancho = (X1 - X0) / plan_.layout.leaves.length;
+          const cx = plan_.layout.leaves[activo].x + ancho / 2;
+          const cy = BAR + (arriba ? -7 : 7);
+          h.setAttribute("cx", cx);
+          h.setAttribute("cy", cy);
           // el halo crece mientras se apaga: es la onda del golpe
-          h.setAttribute("transform", `translate(${p.x} ${BAR + (arriba ? -12 : 12)}) scale(${(0.5 + (1 - brillo) * 1.1).toFixed(3)}) translate(${-p.x} ${-(BAR + (arriba ? -12 : 12))})`);
+          h.setAttribute("transform", `translate(${cx} ${cy}) scale(${(0.5 + (1 - brillo) * 1.1).toFixed(3)}) translate(${-cx} ${-cy})`);
           h.setAttribute("opacity", (brillo * 0.5).toFixed(3));
         } else {
           h.setAttribute("opacity", 0);
@@ -563,13 +566,21 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
         <path ref={rama} d="" fill="none" stroke={HOT} strokeWidth={3.5}
           strokeLinecap="round" opacity={0} style={{ willChange:"opacity" }} />
 
+        {/* Cada pulso es un SEGMENTO, no un punto: un pulso ocupa tiempo. Con
+            puntos, el último caía en (n-1)/n del ancho y dejaba un hueco de un
+            pulso entero al final de la barra — con 4 pulsos, un cuarto de la
+            barra vacía. Como segmentos, la barra se llena entera y además se
+            ve cuánto dura cada pulso. Los bordes siguen cayendo en i/n, así
+            que las coincidencias entre las dos voces se siguen viendo. */}
         {layout.leaves.map((h) => {
           const abre = layout.groups.some((g) => g.from === h.i);
           const base = abre ? color : `${color}88`;
+          const ancho = (X1 - X0) / layout.leaves.length;
           return (
-            <circle key={h.i} ref={(el) => { hojas.current[h.i] = el; }}
-              cx={h.x} cy={yHoja} r={r} fill={base} opacity={0.55}
-              data-cx={h.x} data-cy={yHoja} data-base={base} />
+            <rect key={h.i} ref={(el) => { hojas.current[h.i] = el; }}
+              x={h.x + 1} y={arriba ? BAR - 11 : BAR + 3} width={Math.max(2, ancho - 2)} height={8}
+              rx={2} fill={base} opacity={0.5}
+              data-cx={h.x + ancho / 2} data-cy={BAR} data-base={base} />
           );
         })}
 
@@ -591,14 +602,9 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
   return (
     <svg width={fullscreen ? "92vmin" : "100%"} height={fullscreen ? "82vmin" : undefined}
       viewBox={`0 0 ${S} ${H}`} style={{ maxWidth:ANCHO, overflow:"visible", display:"block" }}>
-      <line ref={barrido} x1={X0} y1={BAR} x2={X1} y2={BAR}
-        stroke="#7c3aed" strokeWidth={8} strokeLinecap="round" opacity={0.3}
+      <rect ref={barrido} x={X0} y={BAR - 13} width={X1 - X0} height={26} rx={3}
+        fill="#7c3aed" opacity={0.18}
         style={{ transition:`opacity ${salida(DUR.base)}ms ${EASE.sale}`, willChange:"opacity" }} />
-      {/* Las barras de compás, como en una partitura. Sin ellas el hueco entre
-          la última hoja y el final parece un error de alineación, cuando en
-          realidad es la duración del último pulso. */}
-      <line x1={X0} y1={BAR - 16} x2={X0} y2={BAR + 16} stroke="#7c3aed" strokeWidth={3} opacity={0.75} />
-      <line x1={X1} y1={BAR - 16} x2={X1} y2={BAR + 16} stroke="#7c3aed" strokeWidth={3} opacity={0.75} />
       {voz(metA, pa, true,  hojasA, haloA, ramaA)}
       {voz(metB, pb, false, hojasB, haloB, ramaB)}
     </svg>
