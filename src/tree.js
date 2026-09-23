@@ -93,7 +93,12 @@ export function activePath(layout, leafIdx) {
 // tienen que adelgazar para no tocarse. El paso entre hojas manda, y el divisor
 // está elegido para que el tope de 9 px se suelte recién pasando los 12 pulsos
 // — antes de eso las hojas sobran de espacio y conviene que se vean grandes.
+// Topes elegidos para que la escala se mantenga: la hoja nunca supera 8, que
+// es el pie de la razon 1,5 — hoja 8, grupo 12, raiz 18. Si la hoja creciera
+// mas, el nivel de grupo dejaria de leerse como el nivel de arriba.
+export const RADIO = { hoja: 8, grupo: 12, raiz: 18 };
+
 export const leafRadius = (total, x0, x1) => {
   const paso = (x1 - x0) / Math.max(1, total);
-  return Math.max(3, Math.min(9, paso / 5));
+  return Math.max(4, Math.min(RADIO.hoja, paso / 6));
 };

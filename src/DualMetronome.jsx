@@ -7,7 +7,7 @@ import { loadSettings, saveSettings } from "./settings.js";
 import { pulseAt, sequenceLabel, normalizeSequence, normalizeStep, normalizePresets, savePreset, deletePreset, DEFAULT_SEQUENCE, DEN_VALUES, MAX_NUM } from "./sequence.js";
 import { exportForState, downloadMidi } from "./midiExport.js";
 // geometría del visualizador de árbol — cálculo puro, testeable
-import { treeLayout, activePath, leafRadius } from "./tree.js";
+import { treeLayout, activePath, leafRadius, RADIO } from "./tree.js";
 // fichas de movimiento y el búfer que sincroniza el dibujo con el audio
 import { DUR, EASE, salida, decay, crearBuffer, anotarPulso, limpiarBuffer, pulsoEn, movimientoReducido } from "./motion.js";
 // fichas visuales: tipografía, espaciado y color, en un solo sitio
@@ -522,7 +522,7 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
             const dir = arriba ? -1 : 1;
             const yH = BAR + dir * 12, yG = BAR + dir * 105, yR = BAR + dir * 175;
             rama.current.setAttribute("d",
-              `M ${(X0 + finX) / 2} ${yR - dir * 18} L ${path.groupX} ${yG + dir * 14} M ${path.groupX} ${yG - dir * 14} L ${path.leafX} ${yH}`);
+              `M ${(X0 + finX) / 2} ${yR - dir * RADIO.raiz} L ${path.groupX} ${yG + dir * RADIO.grupo} M ${path.groupX} ${yG - dir * RADIO.grupo} L ${path.leafX} ${yH + dir * plan_.r}`);
           }
         }
       }
@@ -551,19 +551,19 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
     const centro = (X0 + finX) / 2;   // centro real de lo dibujado
     const color = arriba ? CA : CB;
     const dir   = arriba ? -1 : 1;
-    const yHoja = BAR + dir * 12, yGrupo = BAR + dir * 105, yRaiz = BAR + dir * 175;
+    const yHoja = BAR + dir * 14, yGrupo = BAR + dir * 102, yRaiz = BAR + dir * 190;
     hojas.current = [];
 
     return (
       <g>
         {layout.groups.map((g, i) => (
-          <line key={`gr${i}`} x1={centro} y1={yRaiz - dir * 18} x2={g.x} y2={yGrupo + dir * 14}
-            stroke={color} strokeWidth={1.5} opacity={0.35} />
+          <line key={`gr${i}`} x1={centro} y1={yRaiz - dir * RADIO.raiz} x2={g.x} y2={yGrupo + dir * RADIO.grupo}
+            stroke={color} strokeWidth={2} opacity={0.4} />
         ))}
         {layout.groups.map((g, i) =>
           layout.leaves.slice(g.from, g.to + 1).map((h) => (
-            <line key={`hj${i}-${h.i}`} x1={g.x} y1={yGrupo - dir * 14} x2={h.x} y2={yHoja}
-              stroke={color} strokeWidth={1.5} opacity={0.35} />
+            <line key={`hj${i}-${h.i}`} x1={g.x} y1={yGrupo - dir * RADIO.grupo} x2={h.x} y2={yHoja + dir * r}
+              stroke={color} strokeWidth={2} opacity={0.4} />
           ))
         )}
 
@@ -572,7 +572,7 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
           stroke={HOT} strokeWidth={2} opacity={0} style={{ willChange:"transform, opacity" }} />
 
         {/* la rama que suena, encendida por el bucle */}
-        <path ref={rama} d="" fill="none" stroke={HOT} strokeWidth={3.5}
+        <path ref={rama} d="" fill="none" stroke={HOT} strokeWidth={4}
           strokeLinecap="round" opacity={0} style={{ willChange:"opacity" }} />
 
         {layout.leaves.map((h) => {
@@ -587,13 +587,13 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
 
         {layout.groups.map((g, i) => (
           <g key={`n${i}`}>
-            <circle cx={g.x} cy={yGrupo} r={14} fill="#1e2028" stroke={color} strokeWidth={2} />
+            <circle cx={g.x} cy={yGrupo} r={RADIO.grupo} fill="#1e2028" stroke={color} strokeWidth={2} />
             <text x={g.x} y={yGrupo + 4} textAnchor="middle" fontFamily="'JetBrains Mono',monospace"
               fontSize={12} fontWeight={700} fill={color}>{g.size}</text>
           </g>
         ))}
 
-        <circle cx={centro} cy={yRaiz} r={18} fill="#1e2028" stroke={color} strokeWidth={2.5} />
+        <circle cx={centro} cy={yRaiz} r={RADIO.raiz} fill="#1e2028" stroke={color} strokeWidth={2.5} />
         <text x={centro} y={yRaiz + 5} textAnchor="middle" fontFamily="'JetBrains Mono',monospace"
           fontSize={FS.body} fontWeight={800} fill={color}>{p.etiqueta}</text>
       </g>
