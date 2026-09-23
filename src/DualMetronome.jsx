@@ -463,6 +463,9 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
   };
   const pa = plan(metA, totalAOverride, groupsAOverride);
   const pb = plan(metB, totalBOverride, groupsBOverride);
+  // hasta dónde llega el dibujo: el último pulso de la voz que más extiende
+  const ultimo = (p) => p.layout.leaves[p.layout.leaves.length - 1].x;
+  const finX = Math.max(ultimo(pa), ultimo(pb), X0 + 1);
   // El scheduler reescribe accentGroups en cada pulso con un array NUEVO, así
   // que si el bucle dependiera de él se desmontaría y volvería a montar en cada
   // pulso, y nunca llegaría a dibujar. El plan viaja por un ref que se refresca
@@ -499,10 +502,8 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
       if (halo.current) {
         const h = halo.current;
         if (activo >= 0) {
-          // el halo se centra en el SEGMENTO que suena, no en su borde
-          const ancho = (X1 - X0) / plan_.layout.leaves.length;
-          const cx = plan_.layout.leaves[activo].x + ancho / 2;
-          const cy = BAR + (arriba ? -7 : 7);
+          const cx = plan_.layout.leaves[activo].x;
+          const cy = BAR + (arriba ? -12 : 12);
           h.setAttribute("cx", cx);
           h.setAttribute("cy", cy);
           // el halo crece mientras se apaga: es la onda del golpe
@@ -547,6 +548,7 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
 
   const voz = (met, p, arriba, hojas, halo, rama) => {
     const { layout, r } = p;
+    const centro = (X0 + finX) / 2;   // centro real de lo dibujado
     const color = arriba ? CA : CB;
     const dir   = arriba ? -1 : 1;
     const yHoja = BAR + dir * 12, yGrupo = BAR + dir * 105, yRaiz = BAR + dir * 175;
@@ -555,7 +557,7 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
     return (
       <g>
         {layout.groups.map((g, i) => (
-          <line key={`gr${i}`} x1={layout.rootX} y1={yRaiz + dir * 18} x2={g.x} y2={yGrupo - dir * 14}
+          <line key={`gr${i}`} x1={centro} y1={yRaiz + dir * 18} x2={g.x} y2={yGrupo - dir * 14}
             stroke={color} strokeWidth={1.5} opacity={0.35} />
         ))}
         {layout.groups.map((g, i) =>
@@ -566,28 +568,20 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
         )}
 
         {/* la onda del golpe: un círculo que crece mientras se apaga */}
-        <circle ref={halo} cx={layout.rootX} cy={yHoja} r={r * 1.8} fill="none"
+        <circle ref={halo} cx={centro} cy={yHoja} r={r * 1.8} fill="none"
           stroke={HOT} strokeWidth={2} opacity={0} style={{ willChange:"transform, opacity" }} />
 
         {/* la rama que suena, encendida por el bucle */}
         <path ref={rama} d="" fill="none" stroke={HOT} strokeWidth={3.5}
           strokeLinecap="round" opacity={0} style={{ willChange:"opacity" }} />
 
-        {/* Cada pulso es un SEGMENTO, no un punto: un pulso ocupa tiempo. Con
-            puntos, el último caía en (n-1)/n del ancho y dejaba un hueco de un
-            pulso entero al final de la barra — con 4 pulsos, un cuarto de la
-            barra vacía. Como segmentos, la barra se llena entera y además se
-            ve cuánto dura cada pulso. Los bordes siguen cayendo en i/n, así
-            que las coincidencias entre las dos voces se siguen viendo. */}
         {layout.leaves.map((h) => {
           const abre = layout.groups.some((g) => g.from === h.i);
           const base = abre ? color : `${color}88`;
-          const ancho = (X1 - X0) / layout.leaves.length;
           return (
-            <rect key={h.i} ref={(el) => { hojas.current[h.i] = el; }}
-              x={h.x + 1} y={arriba ? BAR - 11 : BAR + 3} width={Math.max(2, ancho - 2)} height={8}
-              rx={2} fill={base} opacity={0.5}
-              data-cx={h.x + ancho / 2} data-cy={BAR} data-base={base} />
+            <circle key={h.i} ref={(el) => { hojas.current[h.i] = el; }}
+              cx={h.x} cy={yHoja} r={r} fill={base} opacity={0.5}
+              data-cx={h.x} data-cy={yHoja} data-base={base} />
           );
         })}
 
@@ -599,8 +593,8 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
           </g>
         ))}
 
-        <circle cx={layout.rootX} cy={yRaiz} r={18} fill="#1e2028" stroke={color} strokeWidth={2.5} />
-        <text x={layout.rootX} y={yRaiz + 5} textAnchor="middle" fontFamily="'JetBrains Mono',monospace"
+        <circle cx={centro} cy={yRaiz} r={18} fill="#1e2028" stroke={color} strokeWidth={2.5} />
+        <text x={centro} y={yRaiz + 5} textAnchor="middle" fontFamily="'JetBrains Mono',monospace"
           fontSize={FS.body} fontWeight={800} fill={color}>{p.etiqueta}</text>
       </g>
     );
@@ -609,11 +603,17 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
   return (
     <svg width={fullscreen ? "92vmin" : "100%"} height={fullscreen ? "82vmin" : undefined}
       viewBox={`0 0 ${S} ${H}`} style={{ maxWidth:ANCHO, overflow:"visible", display:"block" }}>
-      <rect ref={barrido} x={X0} y={BAR - 13} width={X1 - X0} height={26} rx={3}
-        fill="#7c3aed" opacity={0.18}
-        style={{ transition:`opacity ${salida(DUR.base)}ms ${EASE.sale}`, willChange:"opacity" }} />
-      {voz(metA, pa, true,  hojasA, haloA, ramaA)}
-      {voz(metB, pb, false, hojasB, haloB, ramaB)}
+      {/* La barra termina en el último pulso y todo el dibujo se corre a la
+          mitad del sobrante, así queda centrado. El último pulso nunca llega
+          al final del compás —lo que sobra es su duración—, y dejar la barra
+          estirada hasta ahí la descentraba respecto del árbol. */}
+      <g transform={`translate(${(X1 - finX) / 2} 0)`}>
+        <line ref={barrido} x1={X0} y1={BAR} x2={finX} y2={BAR}
+          stroke="#7c3aed" strokeWidth={8} strokeLinecap="round" opacity={0.3}
+          style={{ transition:`opacity ${salida(DUR.base)}ms ${EASE.sale}`, willChange:"opacity" }} />
+        {voz(metA, pa, true,  hojasA, haloA, ramaA)}
+        {voz(metB, pb, false, hojasB, haloB, ramaB)}
+      </g>
     </svg>
   );
 }
