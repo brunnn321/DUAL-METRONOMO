@@ -9,7 +9,7 @@ import { exportForState, downloadMidi } from "./midiExport.js";
 // geometría del visualizador de árbol — cálculo puro, testeable
 import { treeLayout, activePath, leafRadius, RADIO } from "./tree.js";
 // fichas de movimiento y el búfer que sincroniza el dibujo con el audio
-import { DUR, EASE, salida, decay, crearBuffer, anotarPulso, limpiarBuffer, pulsoEn, movimientoReducido } from "./motion.js";
+import { DUR, EASE, salida, decay, crearBuffer, anotarPulso, limpiarBuffer, pulsoEn, fraccionEntrePulsos, movimientoReducido } from "./motion.js";
 // fichas visuales: tipografía, espaciado y color, en un solo sitio
 import { FS, SP, TX, BG, VOZ, RAD, etiqueta, ANCHO, TRANSPORTE } from "./ui.js";
 
@@ -187,11 +187,33 @@ function mcmGrid(lcmAB, totalA, totalB, r, cx, cy, CA, CB) {
   );
 }
 
+// El collar: el polígono del compás, su estela y el punto que viaja. La estela y
+// el punto los mueve el bucle del reloj de audio por estos dos refs, así que acá
+// no hay nada que se vuelva a montar en cada pulso.
+function Collar({ points, color, estela, cabeza }) {
+  const d = points.map((p) => p.join(",")).join(" ");
+  const [tx, ty] = points[0]; // downbeat vertex — always marked, never animated away
+  return (
+    <>
+      <polygon points={d} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" opacity={0.18} />
+      <polygon ref={estela} points={d} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round"
+        pathLength={1} strokeDasharray={1} strokeDashoffset={1}
+        style={{ filter:`drop-shadow(0 0 6px ${color})`, willChange:"stroke-dashoffset" }} />
+      <polygon points={`${tx},${ty - 7} ${tx + 6},${ty + 5} ${tx - 6},${ty + 5}`} fill={color}
+        style={{ filter:`drop-shadow(0 0 7px ${color})` }} />
+      <circle ref={cabeza} cx={tx} cy={ty} r={5.5} fill="#fff"
+        style={{ filter:"drop-shadow(0 0 8px #fff)", willChange:"cx, cy" }} />
+    </>
+  );
+}
+
 function CircularVisualizer({
   metA, metB, runningA, runningB, centerLabel, showSubtitle, showMcm = true,
   // overrides let Dual Libre drive the visual off its subdivision/subTick
   // instead of timeSig/beat (which are always 1 in that mode)
-  totalAOverride, totalBOverride, beatAOverride, beatBOverride, durAOverride, durBOverride,
+  // El índice del pulso y la fracción del ciclo ya no llegan por props: los lee
+  // el bucle del reloj de audio. Quedan los totales, que definen el dibujo.
+  totalAOverride, totalBOverride,
   // vizStyle is controlled from the parent — this wrapper always has a CSS
   // transform (for the beat pulse), which creates a containing block for
   // position:fixed children, so the toggle button can't live in here
@@ -205,12 +227,9 @@ function CircularVisualizer({
 }) {
   const totalA = totalAOverride ?? beatsPerMeasure(metA.timeSig);
   const totalB = totalBOverride ?? beatsPerMeasure(metB.timeSig);
-  const beatA  = beatAOverride ?? metA.beat;
-  const beatB  = beatBOverride ?? metB.beat;
   const lcmAB  = lcm(totalA, totalB);
   const CA = "#ff6b4a", CB = "#4ad9ff";
   const S = 320, cx = 160, cy = 160, rA = 128, rB = 84, rCycle = rA + 20;
-  const pulse = (beatA === 0 || beatB === 0) && (runningA || runningB);
 
   // sync ring: follows A's or B's real pulses (tap the playhead to switch).
   // Pulse 1 is the reference click where A and B start aligned, so it sits
@@ -226,80 +245,180 @@ function CircularVisualizer({
 
   // brief shared glow on A and B rings the instant the cycle actually closes
   const [syncFlash, setSyncFlash] = useState(false);
-  const flashRef = useRef(null);
   useEffect(() => {
     if (!atSync) return;
-    setSyncFlash(true);
-    clearTimeout(flashRef.current);
-    flashRef.current = setTimeout(() => setSyncFlash(false), 400);
+    // El setState va en un callback y no en el cuerpo del efecto: llamarlo
+    // derecho acá encadena renders, y era uno de los errores que marcaba el lint.
+    let apagar;
+    const prender = setTimeout(() => {
+      setSyncFlash(true);
+      apagar = setTimeout(() => setSyncFlash(false), 400);
+    }, 0);
+    return () => { clearTimeout(prender); clearTimeout(apagar); };
   }, [atSync]);
-
-  // cycle counters increment on every downbeat (beat 0) — changing the key
-  // remounts the arc/wave elements so their CSS animation restarts in sync
-  // with the real tempo instead of looping on a fixed timer
-  const cycleARef = useRef(0), cycleBRef = useRef(0);
-  const [cycleA, setCycleA] = useState(0), [cycleB, setCycleB] = useState(0);
-  const lastDownARef = useRef(0), lastDownBRef = useRef(0);
-  useEffect(() => {
-    if (beatA === 0 && runningA) { lastDownARef.current = performance.now(); setCycleA(++cycleARef.current); }
-  }, [beatA, runningA]);
-  useEffect(() => {
-    if (beatB === 0 && runningB) { lastDownBRef.current = performance.now(); setCycleB(++cycleBRef.current); }
-  }, [beatB, runningB]);
-  const durA = durAOverride ?? (totalA * 60 / metA.bpm);
-  const durB = durBOverride ?? (totalB * 60 / metB.bpm);
-
-  // necklace mode: single rAF loop drives both the trailing stroke and the
-  // traveling dot from the *same* progress fraction, so they can never drift
-  // apart from each other (unlike separately-timed CSS/SMIL animations)
-  const [progA, setProgA] = useState(0), [progB, setProgB] = useState(0);
-  useEffect(() => {
-    if (vizStyle !== "necklace") return;
-    let raf;
-    const tick = () => {
-      if (runningA && durA > 0) setProgA(((performance.now() - lastDownARef.current) / 1000 / durA) % 1);
-      if (runningB && durB > 0) setProgB(((performance.now() - lastDownBRef.current) / 1000 / durB) % 1);
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [vizStyle, runningA, runningB, durA, durB]);
 
   const pointsA = polyPoints(totalA, rA, cx, cy);
   const pointsB = polyPoints(totalB, rB, cx, cy);
-  const necklace = (points, color, running, prog) => {
-    if (!running) return null;
-    const [dx, dy] = pointAtT(points, prog);
-    const [tx, ty] = points[0]; // downbeat vertex — always marked, never animated away
+
+  // ── el motor: mismo reloj que el sonido ─────────────────────────────────────
+  // Igual que el árbol. El scheduler anota cada pulso con el `t` del audio y acá
+  // se lee `ctx.currentTime` para saber dónde estamos. Antes el pulso activo
+  // llegaba por estado de React desde un `setTimeout` del scheduler —dos relojes
+  // distintos— y el collar hacía un setState por cuadro, sesenta por segundo.
+  const puntosA = useRef([]), puntosB = useRef([]);
+  const haloA  = useRef(null), haloB  = useRef(null);
+  const arcoA  = useRef(null), arcoB  = useRef(null);
+  const estelaA = useRef(null), estelaB = useRef(null);
+  const cabezaA = useRef(null), cabezaB = useRef(null);
+  const ondaA  = useRef(null), ondaB  = useRef(null);
+  const marco  = useRef(null);
+
+  // Los totales cambian con la secuencia y con el modo, así que viajan por un
+  // ref que se refresca en cada render: si el bucle dependiera de ellos se
+  // desmontaría en cada cambio de compás.
+  const vista = useRef({ totalA, totalB, pointsA, pointsB, subA: false, subB: false });
+  useEffect(() => {
+    vista.current = { totalA, totalB, pointsA, pointsB,
+                      subA: totalAOverride != null, subB: totalBOverride != null };
+  });
+
+  useEffect(() => {
+    if (movimientoReducido()) return;
+    if (!runningA && !runningB) return;
+    if (vizStyle === "tree") return;
+    let raf;
+    const vida = DUR.slow / 1000;
+    const elMarco = marco.current;   // copiado acá: en la limpieza el ref ya pudo cambiar
+
+    // Qué pulso suena, cuánto le queda de brillo, y en qué punto del ciclo
+    // estamos. Con override —DUAL LIBRE— el búfer guarda un pulso por tiempo y
+    // la estructura dibujada es la subdivisión, así que el índice sale de
+    // repartir `paso` en `total` partes iguales.
+    const leer = (buf, total, usaSub) => {
+      const ctx = ctxRef?.current;
+      if (!ctx || ctx.state === "closed") return null;
+      const ahora = ctx.currentTime;
+      const hit = pulsoEn(buf.current, ahora);
+      if (!hit) return null;
+      if (usaSub) {
+        const paso = hit.pulso.paso;
+        if (!(paso > 0) || !(total > 0)) return null;
+        const sub = paso / total;
+        const i = Math.min(total - 1, Math.floor(hit.desde / sub));
+        return { activo: i, brillo: decay(hit.desde - i * sub, Math.min(vida, sub)),
+                 frac: Math.min(1, hit.desde / paso) };
+      }
+      const tot = Math.max(1, hit.pulso.total || total);
+      const f = fraccionEntrePulsos(buf.current, ahora);
+      return { activo: Math.min(total - 1, hit.pulso.idx), brillo: decay(hit.desde, vida),
+               frac: ((hit.pulso.idx + f) % tot) / tot };
+    };
+
+    const pintar = (lect, puntos, halo, arco, estela, cabeza, onda, pts, r) => {
+      const act = lect && lect.brillo > 0 ? lect.activo : -1;
+
+      for (let i = 0; i < puntos.current.length; i++) {
+        const el = puntos.current[i];
+        if (!el) continue;
+        const on = i === act;
+        // escala, no radio: el radio obliga a repintar y la escala no
+        const k = on ? 1 + lect.brillo * 0.5 : 1;
+        el.setAttribute("transform", `translate(${el.dataset.cx} ${el.dataset.cy}) scale(${k.toFixed(3)}) translate(-${el.dataset.cx} -${el.dataset.cy})`);
+        el.setAttribute("fill", on ? el.dataset.vivo : el.dataset.base);
+      }
+
+      // Un solo halo por voz que se muda al pulso que suena, en vez de dos
+      // círculos que se montaban y desmontaban en cada golpe.
+      if (halo.current) {
+        if (act >= 0 && pts[act]) {
+          const [hx, hy] = pts[act];
+          halo.current.setAttribute("transform", `translate(${hx} ${hy}) scale(${(0.6 + (1 - lect.brillo) * 1.4).toFixed(3)}) translate(${-hx} ${-hy})`);
+          halo.current.setAttribute("cx", hx);
+          halo.current.setAttribute("cy", hy);
+          halo.current.setAttribute("opacity", (lect.brillo * 0.45).toFixed(3));
+        } else {
+          halo.current.setAttribute("opacity", 0);
+        }
+      }
+
+      const frac = lect ? lect.frac : 0;
+      // el arco se llena con la fracción real del compás, no con una animación
+      // de CSS de duración fija que se reiniciaba remontando el elemento
+      if (arco.current) arco.current.setAttribute("stroke-dashoffset", (1 - frac).toFixed(4));
+      if (estela.current) estela.current.setAttribute("stroke-dashoffset", (1 - frac).toFixed(4));
+      if (cabeza.current && pts.length) {
+        const [dx, dy] = pointAtT(pts, frac);
+        cabeza.current.setAttribute("cx", dx.toFixed(2));
+        cabeza.current.setAttribute("cy", dy.toFixed(2));
+      }
+      // la onda sale del 1, y se apaga creciendo
+      if (onda.current) {
+        if (act === 0 && lect.brillo > 0) {
+          const s = 1 + (1 - lect.brillo) * 3.2;
+          onda.current.setAttribute("transform", `translate(${cx} ${cy - r}) scale(${s.toFixed(3)}) translate(${-cx} ${-(cy - r)})`);
+          onda.current.setAttribute("opacity", (lect.brillo * 0.8).toFixed(3));
+        } else {
+          onda.current.setAttribute("opacity", 0);
+        }
+      }
+      return act === 0 ? (lect ? lect.brillo : 0) : 0;
+    };
+
+    const tick = () => {
+      if (!document.hidden) {
+        const v = vista.current;
+        const la = runningA ? leer(pulsosA, v.totalA, v.subA) : null;
+        const lb = runningB ? leer(pulsosB, v.totalB, v.subB) : null;
+        const ga = pintar(la, puntosA, haloA, arcoA, estelaA, cabezaA, ondaA, v.pointsA, rA);
+        const gb = pintar(lb, puntosB, haloB, arcoB, estelaB, cabezaB, ondaB, v.pointsB, rB);
+        // el latido del marco: el 1 de cualquiera de las dos voces
+        if (marco.current) {
+          const g = Math.max(ga, gb);
+          marco.current.style.transform = `scale(${(1 + g * 0.035).toFixed(4)})`;
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    // Al parar, el último cuadro quedaba congelado con un punto encendido y su
+    // halo abierto. Se apaga todo a mano, que es lo que antes hacía React al
+    // volver a pintar.
+    return () => {
+      cancelAnimationFrame(raf);
+      for (const p of [puntosA, puntosB]) {
+        for (const el of p.current) {
+          if (!el) continue;
+          el.setAttribute("transform", `translate(${el.dataset.cx} ${el.dataset.cy}) scale(1) translate(-${el.dataset.cx} -${el.dataset.cy})`);
+          el.setAttribute("fill", el.dataset.base);
+        }
+      }
+      for (const r of [haloA, haloB, ondaA, ondaB]) r.current?.setAttribute("opacity", 0);
+      if (elMarco) elMarco.style.transform = "scale(1)";
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runningA, runningB, vizStyle]);
+
+  // Los puntos del aro los enciende el bucle, no React: cada uno lleva su
+  // posición y sus dos colores en `data-*` y nunca se vuelve a montar.
+  const ring = (total, r, color, puntos, halo) => {
+    const dr = total <= 8 ? 12 : total <= 12 ? 9 : 7;
     return (
       <>
-        <polygon points={points.map((p) => p.join(",")).join(" ")} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" opacity={0.18} />
-        <polygon points={points.map((p) => p.join(",")).join(" ")} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round"
-          pathLength={1} strokeDasharray={1} strokeDashoffset={1 - prog}
-          style={{ filter:`drop-shadow(0 0 6px ${color})` }} />
-        <polygon points={`${tx},${ty - 7} ${tx + 6},${ty + 5} ${tx - 6},${ty + 5}`} fill={color} style={{ filter:`drop-shadow(0 0 7px ${color})` }} />
-        <circle cx={dx} cy={dy} r={5.5} fill="#fff" style={{ filter:"drop-shadow(0 0 8px #fff)" }} />
+        <circle ref={halo} cx={cx} cy={cy - r} r={dr + 16} fill={`${color}44`} opacity={0}
+          style={{ willChange:"transform, opacity" }} />
+        {Array.from({ length:total }, (_, i) => {
+          const a = (i / total) * 2 * Math.PI - Math.PI / 2;
+          const x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
+          const base = i === 0 ? `${color}dd` : `${color}88`;
+          return (
+            <circle key={i} ref={(el) => { puntos.current[i] = el; }}
+              cx={x} cy={y} r={i === 0 ? dr + 3 : dr} fill={base}
+              data-cx={x} data-cy={y} data-base={base} data-vivo={color}
+              style={{ willChange:"transform" }} />
+          );
+        })}
       </>
     );
-  };
-
-  const ring = (total, r, activeBeat, color) => {
-    const dr = total <= 8 ? 12 : total <= 12 ? 9 : 7;
-    return Array.from({ length:total }, (_, i) => {
-      const a = (i / total) * 2 * Math.PI - Math.PI / 2;
-      const x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
-      const on = activeBeat === i;
-      return (
-        <g key={i}>
-          {on && <circle cx={x} cy={y} r={dr+16} fill={`${color}44`} />}
-          {on && <circle cx={x} cy={y} r={dr+9}  fill={`${color}22`} />}
-          <circle cx={x} cy={y} r={i === 0 ? dr+3 : dr}
-            fill={on ? color : i === 0 ? `${color}dd` : `${color}88`}
-            stroke={on ? "#fff" : "none"} strokeWidth={on ? 2 : 0}
-            style={{ filter: on ? `drop-shadow(0 0 18px ${color}) drop-shadow(0 0 6px #fff)` : "none", transition:"fill 0.05s" }} />
-        </g>
-      );
-    });
   };
 
   const label = centerLabel ?? `${totalA}:${totalB}`;
@@ -318,11 +437,10 @@ function CircularVisualizer({
   }
 
   return (
-    <div style={{
+    <div ref={marco} style={{
       display:"flex", flexDirection:"column", alignItems:"center", gap:SP.md,
       width:"100%", maxWidth:460,
-      transform: pulse ? "scale(1.035)" : "scale(1)",
-      transition: pulse ? "transform 0.04s" : `transform ${DUR.slow}ms ${EASE.entra}`,
+      transform:"scale(1)", willChange:"transform",
     }}>
       <div style={{ position:"relative", width:"100%", maxWidth:460, display:"flex", justifyContent:"center" }}>
         <div style={{
@@ -376,29 +494,33 @@ function CircularVisualizer({
               queda arriba en las dos. */}
           <g transform={`translate(${2 * cx} 0) scale(-1 1)`}>
             {vizStyle === "rings" && runningA && (
-              <circle key={`arcA-${cycleA}`} cx={cx} cy={cy} r={rA} fill="none" stroke={CA} strokeWidth={4}
+              <circle ref={arcoA} cx={cx} cy={cy} r={rA} fill="none" stroke={CA} strokeWidth={4}
                 strokeLinecap="round" pathLength={1} strokeDasharray={1} strokeDashoffset={1}
                 transform={`rotate(-90 ${cx} ${cy})`}
-                style={{ animation:`fillArc ${durA}s linear forwards`, filter:`drop-shadow(0 0 5px ${CA})` }} />
+                style={{ filter:`drop-shadow(0 0 5px ${CA})`, willChange:"stroke-dashoffset" }} />
             )}
-            {vizStyle === "necklace" && necklace(pointsA, CA, runningA, progA)}
-            {ring(totalA, rA, beatA, CA)}
+            {vizStyle === "necklace" && runningA && (
+              <Collar points={pointsA} color={CA} estela={estelaA} cabeza={cabezaA} />
+            )}
+            {ring(totalA, rA, CA, puntosA, haloA)}
           </g>
           {vizStyle === "rings" && runningB && (
-            <circle key={`arcB-${cycleB}`} cx={cx} cy={cy} r={rB} fill="none" stroke={CB} strokeWidth={4}
+            <circle ref={arcoB} cx={cx} cy={cy} r={rB} fill="none" stroke={CB} strokeWidth={4}
               strokeLinecap="round" pathLength={1} strokeDasharray={1} strokeDashoffset={1}
               transform={`rotate(-90 ${cx} ${cy})`}
-              style={{ animation:`fillArc ${durB}s linear forwards`, filter:`drop-shadow(0 0 5px ${CB})` }} />
+              style={{ filter:`drop-shadow(0 0 5px ${CB})`, willChange:"stroke-dashoffset" }} />
           )}
-          {vizStyle === "necklace" && necklace(pointsB, CB, runningB, progB)}
-          {ring(totalB, rB, beatB, CB)}
-          {vizStyle === "rings" && runningA && cycleA > 0 && (
-            <circle key={`waveA-${cycleA}`} cx={cx} cy={cy - rA} r={5} fill="none" stroke={CA} strokeWidth={2.5}
-              style={{ animation:"waveBurst 0.55s ease-out forwards" }} />
+          {vizStyle === "necklace" && runningB && (
+            <Collar points={pointsB} color={CB} estela={estelaB} cabeza={cabezaB} />
           )}
-          {vizStyle === "rings" && runningB && cycleB > 0 && (
-            <circle key={`waveB-${cycleB}`} cx={cx} cy={cy - rB} r={5} fill="none" stroke={CB} strokeWidth={2.5}
-              style={{ animation:"waveBurst 0.55s ease-out forwards" }} />
+          {ring(totalB, rB, CB, puntosB, haloB)}
+          {vizStyle === "rings" && runningA && (
+            <circle ref={ondaA} cx={cx} cy={cy - rA} r={5} fill="none" stroke={CA} strokeWidth={2.5}
+              opacity={0} style={{ willChange:"transform, opacity" }} />
+          )}
+          {vizStyle === "rings" && runningB && (
+            <circle ref={ondaB} cx={cx} cy={cy - rB} r={5} fill="none" stroke={CB} strokeWidth={2.5}
+              opacity={0} style={{ willChange:"transform, opacity" }} />
           )}
           <text x={cx} y={showMcm ? cy - 10 : cy + 10} textAnchor="middle"
             fill={syncFlash ? "#fff" : "#ddd"} fontSize={30}
@@ -934,7 +1056,7 @@ function DualSwitch({ on, onToggle }) {
 }
 
 // ─── progressive practice ─────────────────────────────────────────────────────
-function ProgressivePractice({ onBpmChange, onActivate, running, onStatus }) {
+function ProgressivePractice({ onBpmChange, onActivate, onStatus }) {
   const [on, setOn]     = useState(false);
   const [cfg, setCfg]   = useState({ bpmStart:30, bpmMax:140, increment:5, intervalSec:120, onMax:"stop" });
   const [curBpm, setCurBpm]     = useState(30);
@@ -1912,13 +2034,17 @@ export default function DualMetronome() {
   useEffect(() => {
     if (!(mode === "libre" || mode === "polimetria") || !runningA) return;
     if (metA.subTick !== 0) return;
-    setPulseCountA((n) => n + 1);
+    // El setState va en un callback: llamarlo derecho en el cuerpo del efecto
+    // encadena renders, y era uno de los cuatro errores viejos del lint.
+    const id = setTimeout(() => setPulseCountA((n) => n + 1), 0);
+    return () => clearTimeout(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metA.subTick]);
   useEffect(() => {
     if (!(mode === "libre" || mode === "polimetria") || !runningB) return;
     if (metB.subTick !== 0) return;
-    setPulseCountB((n) => n + 1);
+    const id = setTimeout(() => setPulseCountB((n) => n + 1), 0);
+    return () => clearTimeout(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metB.subTick]);
 
@@ -2026,13 +2152,13 @@ export default function DualMetronome() {
     setRelBase(v); relBaseRef.current = v;
     applyPoliParams(relBpmBase, v, relDerivRef.current);
   // relBpmBase captured at call time; applyPoliParams is stable
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [applyPoliParams, relBpmBase]);
 
   const handleRelDeriv = useCallback((v) => {
     setRelDeriv(v); relDerivRef.current = v;
     applyPoliParams(relBpmBase, relBaseRef.current, v);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [applyPoliParams, relBpmBase]);
 
   // ── polimetría handlers ────────────────────────────────────────────────────
@@ -2135,7 +2261,7 @@ export default function DualMetronome() {
       setMetA((p) => ({ ...p, timeSig: "1/4" }));
       setMetB((p) => ({ ...p, timeSig: "1/4" }));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [hardStop, relBpmBase]);
 
   // ── progressive practice bpm handler ──────────────────────────────────────
@@ -2206,7 +2332,7 @@ export default function DualMetronome() {
     mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB, seqStepsA, seqStepsB, seqPresets,
     metA: { bpm:metA.bpm, baseBpm:metA.baseBpm, timeSig:metA.timeSig, subdivision:metA.subdivision, strongSound:metA.strongSound, weakSound:metA.weakSound, volume:metA.volume, muted:metA.muted, accentGroups:metA.accentGroups, subAccents:metA.subAccents },
     metB: { bpm:metB.bpm, baseBpm:metB.baseBpm, timeSig:metB.timeSig, subdivision:metB.subdivision, strongSound:metB.strongSound, weakSound:metB.weakSound, volume:metB.volume, muted:metB.muted, accentGroups:metB.accentGroups, subAccents:metB.subAccents },
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }), [mode, relBase, relDeriv, relBpmBase, polyBpm, polyBeatsA, polyBeatsB, seqStepsA, seqStepsB, seqPresets,
     metA.bpm, metA.baseBpm, metA.timeSig, metA.subdivision, metA.strongSound, metA.weakSound, metA.volume, metA.muted, metA.accentGroups, metA.subAccents,
     metB.bpm, metB.baseBpm, metB.timeSig, metB.subdivision, metB.strongSound, metB.weakSound, metB.volume, metB.muted, metB.accentGroups, metB.subAccents]);
