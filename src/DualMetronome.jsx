@@ -522,7 +522,7 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
             const dir = arriba ? -1 : 1;
             const yH = BAR + dir * 12, yG = BAR + dir * 105, yR = BAR + dir * 175;
             rama.current.setAttribute("d",
-              `M ${path.rootX} ${yR + dir * 18} L ${path.groupX} ${yG - dir * 14} M ${path.groupX} ${yG + dir * 14} L ${path.leafX} ${yH}`);
+              `M ${(X0 + finX) / 2} ${yR - dir * 18} L ${path.groupX} ${yG + dir * 14} M ${path.groupX} ${yG - dir * 14} L ${path.leafX} ${yH}`);
           }
         }
       }
@@ -557,12 +557,12 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
     return (
       <g>
         {layout.groups.map((g, i) => (
-          <line key={`gr${i}`} x1={centro} y1={yRaiz + dir * 18} x2={g.x} y2={yGrupo - dir * 14}
+          <line key={`gr${i}`} x1={centro} y1={yRaiz - dir * 18} x2={g.x} y2={yGrupo + dir * 14}
             stroke={color} strokeWidth={1.5} opacity={0.35} />
         ))}
         {layout.groups.map((g, i) =>
           layout.leaves.slice(g.from, g.to + 1).map((h) => (
-            <line key={`hj${i}-${h.i}`} x1={g.x} y1={yGrupo + dir * 14} x2={h.x} y2={yHoja}
+            <line key={`hj${i}-${h.i}`} x1={g.x} y1={yGrupo - dir * 14} x2={h.x} y2={yHoja}
               stroke={color} strokeWidth={1.5} opacity={0.35} />
           ))
         )}
