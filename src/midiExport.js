@@ -19,9 +19,12 @@ export const NOTE_B     = 48;    // C3 — una octava arriba de A
 // Tres niveles, los mismos que distingue el scheduler: el 1 del ciclo, los
 // arranques de grupo de una métrica aditiva (3+3+2 acentúa también el 4 y el 7)
 // y el resto de los pulsos.
-export const VEL_ACCENT = 110;
-export const VEL_SUB    = 95;
-export const VEL_NORMAL = 80;
+// La distancia entre el fuerte y el débil es amplia a propósito: con 110 contra
+// 80 los dos sonaban casi igual de firmes en el DAW y la separación no se oía.
+// El intermedio queda a mitad de camino para que los tres sigan distinguiéndose.
+export const VEL_ACCENT = 90;
+export const VEL_SUB    = 70;
+export const VEL_NORMAL = 50;
 
 export const gcd = (a, b) => (b === 0 ? Math.abs(a) : gcd(b, a % b));
 export const lcm = (a, b) => Math.abs(a * b) / gcd(a, b);

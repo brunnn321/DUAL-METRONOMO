@@ -195,7 +195,7 @@ El botón de **flecha hacia abajo** (arriba a la izquierda) baja un archivo `.mi
 - El archivo sale con el **tempo que tengas puesto en la app**. Si armas un 4 contra 3 a 90 BPM, el archivo viene a 90 BPM.
 - Trae **dos pistas separadas**, una para A y otra para B, en canales distintos, para que les pongas sonidos diferentes.
 - **A usa la nota 36 (Do) y B la nota 48 (Do una octava más arriba).** Están a una octava exacta para que se distingan fácil.
-- Los acentos salen en **tres niveles de volumen** (velocity): el primer pulso de cada ciclo con 110, los arranques de grupo de una métrica aditiva con 95, y el resto de los pulsos con 80. Si agrupaste un 8 en 3+3+2, el archivo trae acentuados el 1, el 4 y el 7 — no solo el 1.
+- Los acentos salen en **tres niveles de volumen** (velocity): el primer pulso de cada ciclo con 90, los arranques de grupo de una métrica aditiva con 70, y el resto de los pulsos con 50. Si agrupaste un 8 en 3+3+2, el archivo trae acentuados el 1, el 4 y el 7 — no solo el 1.
 - El nombre de cada pista dice la agrupación, para verla en el programa sin tener que contar: `A - 8 pulsos 3+3+2 (nota 36)`.
 - El nombre del archivo dice qué es: `dualpulse-7-4-80bpm.mid` es un 7 contra 4 a 80 BPM.
 
