@@ -487,23 +487,16 @@ function CircularVisualizer({
               <circle cx={cx} cy={cy} r={rB} fill="none" stroke="#EF9F27" strokeWidth={5} style={{ filter:"drop-shadow(0 0 14px #EF9F27)" }} />
             </>
           )}
-          {/* A gira a la izquierda y B a la derecha. Espejo sobre el eje
-              vertical aplicado al grupo de A: los puntos caen en
-              (i/total)·2π − π/2, simétricos respecto de ese eje, así que en
-              reposo el dibujo no se mueve de lugar — lo que cambia es el
-              sentido del recorrido, y las dos voces se cruzan en el 1. */}
-          <g transform={`translate(${2 * cx} 0) scale(-1 1)`}>
-            {vizStyle === "rings" && runningA && (
-              <circle ref={arcoA} cx={cx} cy={cy} r={rA} fill="none" stroke={CA} strokeWidth={4}
-                strokeLinecap="round" pathLength={1} strokeDasharray={1} strokeDashoffset={1}
-                transform={`rotate(-90 ${cx} ${cy})`}
-                style={{ filter:`drop-shadow(0 0 5px ${CA})`, willChange:"stroke-dashoffset" }} />
-            )}
-            {vizStyle === "necklace" && runningA && (
-              <Collar points={pointsA} color={CA} estela={estelaA} cabeza={cabezaA} />
-            )}
-            {ring(totalA, rA, CA, puntosA, haloA)}
-          </g>
+          {vizStyle === "rings" && runningA && (
+            <circle ref={arcoA} cx={cx} cy={cy} r={rA} fill="none" stroke={CA} strokeWidth={4}
+              strokeLinecap="round" pathLength={1} strokeDasharray={1} strokeDashoffset={1}
+              transform={`rotate(-90 ${cx} ${cy})`}
+              style={{ filter:`drop-shadow(0 0 5px ${CA})`, willChange:"stroke-dashoffset" }} />
+          )}
+          {vizStyle === "necklace" && runningA && (
+            <Collar points={pointsA} color={CA} estela={estelaA} cabeza={cabezaA} />
+          )}
+          {ring(totalA, rA, CA, puntosA, haloA)}
           {vizStyle === "rings" && runningB && (
             <circle ref={arcoB} cx={cx} cy={cy} r={rB} fill="none" stroke={CB} strokeWidth={4}
               strokeLinecap="round" pathLength={1} strokeDasharray={1} strokeDashoffset={1}
