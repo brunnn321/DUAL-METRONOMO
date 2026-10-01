@@ -190,19 +190,28 @@ function mcmGrid(lcmAB, totalA, totalB, r, cx, cy, CA, CB) {
 // El collar: el polígono del compás, su estela y el punto que viaja. La estela y
 // el punto los mueve el bucle del reloj de audio por estos dos refs, así que acá
 // no hay nada que se vuelva a montar en cada pulso.
-function Collar({ points, color, estela, cabeza }) {
+function Collar({ points, color, estela, estelaHalo, cabeza, cabezaHalo }) {
   const d = points.map((p) => p.join(",")).join(" ");
   const [tx, ty] = points[0]; // downbeat vertex — always marked, never animated away
   return (
     <>
       <polygon points={d} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" opacity={0.18} />
+      {/* Nada de `drop-shadow` en lo que se mueve: el filtro obliga a volver a
+          rasterizar toda la zona en cada cuadro, y a 60 por segundo en pantalla
+          completa es lo que colgaba el dibujo. El halo se hace con un trazo
+          ancho y transparente debajo, que el navegador compone sin repintar. */}
+      <polygon ref={estelaHalo} points={d} fill="none" stroke={color} strokeWidth={7} strokeLinejoin="round"
+        opacity={0.22} pathLength={1} strokeDasharray={1} strokeDashoffset={1}
+        style={{ willChange:"stroke-dashoffset" }} />
       <polygon ref={estela} points={d} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round"
         pathLength={1} strokeDasharray={1} strokeDashoffset={1}
-        style={{ filter:`drop-shadow(0 0 6px ${color})`, willChange:"stroke-dashoffset" }} />
+        style={{ willChange:"stroke-dashoffset" }} />
       <polygon points={`${tx},${ty - 7} ${tx + 6},${ty + 5} ${tx - 6},${ty + 5}`} fill={color}
         style={{ filter:`drop-shadow(0 0 7px ${color})` }} />
+      <circle ref={cabezaHalo} cx={tx} cy={ty} r={11} fill="#fff" opacity={0.22}
+        style={{ willChange:"cx, cy" }} />
       <circle ref={cabeza} cx={tx} cy={ty} r={5.5} fill="#fff"
-        style={{ filter:"drop-shadow(0 0 8px #fff)", willChange:"cx, cy" }} />
+        style={{ willChange:"cx, cy" }} />
     </>
   );
 }
@@ -269,7 +278,9 @@ function CircularVisualizer({
   const haloA  = useRef(null), haloB  = useRef(null);
   const arcoA  = useRef(null), arcoB  = useRef(null);
   const estelaA = useRef(null), estelaB = useRef(null);
+  const estelaHaloA = useRef(null), estelaHaloB = useRef(null);
   const cabezaA = useRef(null), cabezaB = useRef(null);
+  const cabezaHaloA = useRef(null), cabezaHaloB = useRef(null);
   const ondaA  = useRef(null), ondaB  = useRef(null);
   const marco  = useRef(null);
 
@@ -314,7 +325,7 @@ function CircularVisualizer({
                frac: ((hit.pulso.idx + f) % tot) / tot };
     };
 
-    const pintar = (lect, puntos, halo, arco, estela, cabeza, onda, pts, r) => {
+    const pintar = (lect, puntos, halo, arco, estela, estelaHalo, cabeza, cabezaHalo, onda, pts, r) => {
       const act = lect && lect.brillo > 0 ? lect.activo : -1;
 
       for (let i = 0; i < puntos.current.length; i++) {
@@ -344,12 +355,16 @@ function CircularVisualizer({
       const frac = lect ? lect.frac : 0;
       // el arco se llena con la fracción real del compás, no con una animación
       // de CSS de duración fija que se reiniciaba remontando el elemento
-      if (arco.current) arco.current.setAttribute("stroke-dashoffset", (1 - frac).toFixed(4));
-      if (estela.current) estela.current.setAttribute("stroke-dashoffset", (1 - frac).toFixed(4));
+      const off = (1 - frac).toFixed(4);
+      if (arco.current) arco.current.setAttribute("stroke-dashoffset", off);
+      if (estela.current) estela.current.setAttribute("stroke-dashoffset", off);
+      if (estelaHalo.current) estelaHalo.current.setAttribute("stroke-dashoffset", off);
       if (cabeza.current && pts.length) {
         const [dx, dy] = pointAtT(pts, frac);
-        cabeza.current.setAttribute("cx", dx.toFixed(2));
-        cabeza.current.setAttribute("cy", dy.toFixed(2));
+        const sx = dx.toFixed(2), sy = dy.toFixed(2);
+        cabeza.current.setAttribute("cx", sx);
+        cabeza.current.setAttribute("cy", sy);
+        if (cabezaHalo.current) { cabezaHalo.current.setAttribute("cx", sx); cabezaHalo.current.setAttribute("cy", sy); }
       }
       // la onda sale del 1, y se apaga creciendo
       if (onda.current) {
@@ -369,8 +384,8 @@ function CircularVisualizer({
         const v = vista.current;
         const la = runningA ? leer(pulsosA, v.totalA, v.subA) : null;
         const lb = runningB ? leer(pulsosB, v.totalB, v.subB) : null;
-        const ga = pintar(la, puntosA, haloA, arcoA, estelaA, cabezaA, ondaA, v.pointsA, rA);
-        const gb = pintar(lb, puntosB, haloB, arcoB, estelaB, cabezaB, ondaB, v.pointsB, rB);
+        const ga = pintar(la, puntosA, haloA, arcoA, estelaA, estelaHaloA, cabezaA, cabezaHaloA, ondaA, v.pointsA, rA);
+        const gb = pintar(lb, puntosB, haloB, arcoB, estelaB, estelaHaloB, cabezaB, cabezaHaloB, ondaB, v.pointsB, rB);
         // el latido del marco: el 1 de cualquiera de las dos voces
         if (marco.current) {
           const g = Math.max(ga, gb);
@@ -439,16 +454,19 @@ function CircularVisualizer({
   return (
     <div ref={marco} style={{
       display:"flex", flexDirection:"column", alignItems:"center", gap:SP.md,
-      width:"100%", maxWidth:460,
+      // En pantalla completa el tope de 460 px dejaba el círculo chico en el
+      // medio de la pantalla: el 82vmin del svg nunca llegaba a aplicarse.
+      width:"100%", maxWidth: fullscreen ? "none" : 460,
       transform:"scale(1)", willChange:"transform",
     }}>
-      <div style={{ position:"relative", width:"100%", maxWidth:460, display:"flex", justifyContent:"center" }}>
+      <div style={{ position:"relative", width:"100%", maxWidth: fullscreen ? "none" : 460, display:"flex", justifyContent:"center" }}>
         <div style={{
           position:"absolute", inset:-30, borderRadius:"50%",
           background: `radial-gradient(circle, ${syncFlash ? "#ffffff22" : `${CA}14`} 0%, transparent 70%)`,
           transition:"background 0.3s", pointerEvents:"none",
         }} />
-        <svg width={fullscreen ? "82vmin" : "100%"} height={fullscreen ? "82vmin" : undefined} viewBox={`0 0 ${S} ${S}`} style={{ overflow:"visible", position:"relative", maxWidth:460, display:"block" }}>
+        <svg width={fullscreen ? "88vmin" : "100%"} height={fullscreen ? "88vmin" : undefined} viewBox={`0 0 ${S} ${S}`}
+          style={{ overflow:"visible", position:"relative", maxWidth: fullscreen ? "none" : 460, display:"block", margin:"0 auto" }}>
           <defs>
             <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
               <stop offset="0%" stopColor={syncFlash ? "#ffffff33" : "#ffffff0a"} />
@@ -491,20 +509,22 @@ function CircularVisualizer({
             <circle ref={arcoA} cx={cx} cy={cy} r={rA} fill="none" stroke={CA} strokeWidth={4}
               strokeLinecap="round" pathLength={1} strokeDasharray={1} strokeDashoffset={1}
               transform={`rotate(-90 ${cx} ${cy})`}
-              style={{ filter:`drop-shadow(0 0 5px ${CA})`, willChange:"stroke-dashoffset" }} />
+              style={{ willChange:"stroke-dashoffset" }} />
           )}
           {vizStyle === "necklace" && runningA && (
-            <Collar points={pointsA} color={CA} estela={estelaA} cabeza={cabezaA} />
+            <Collar points={pointsA} color={CA} estela={estelaA} estelaHalo={estelaHaloA}
+              cabeza={cabezaA} cabezaHalo={cabezaHaloA} />
           )}
           {ring(totalA, rA, CA, puntosA, haloA)}
           {vizStyle === "rings" && runningB && (
             <circle ref={arcoB} cx={cx} cy={cy} r={rB} fill="none" stroke={CB} strokeWidth={4}
               strokeLinecap="round" pathLength={1} strokeDasharray={1} strokeDashoffset={1}
               transform={`rotate(-90 ${cx} ${cy})`}
-              style={{ filter:`drop-shadow(0 0 5px ${CB})`, willChange:"stroke-dashoffset" }} />
+              style={{ willChange:"stroke-dashoffset" }} />
           )}
           {vizStyle === "necklace" && runningB && (
-            <Collar points={pointsB} color={CB} estela={estelaB} cabeza={cabezaB} />
+            <Collar points={pointsB} color={CB} estela={estelaB} estelaHalo={estelaHaloB}
+              cabeza={cabezaB} cabezaHalo={cabezaHaloB} />
           )}
           {ring(totalB, rB, CB, puntosB, haloB)}
           {vizStyle === "rings" && runningA && (
@@ -716,8 +736,9 @@ function TreeVisualizer({ metA, metB, runningA, runningB, fullscreen, ctxRef, pu
   };
 
   return (
-    <svg width={fullscreen ? "92vmin" : "100%"} height={fullscreen ? "82vmin" : undefined}
-      viewBox={`0 0 ${S} ${H}`} style={{ maxWidth:ANCHO, overflow:"visible", display:"block" }}>
+    <svg width={fullscreen ? "94vw" : "100%"} height={fullscreen ? "86vh" : undefined}
+      viewBox={`0 0 ${S} ${H}`}
+      style={{ maxWidth: fullscreen ? "none" : ANCHO, overflow:"visible", display:"block", margin:"0 auto" }}>
       {/* La barra termina en el último pulso y todo el dibujo se corre a la
           mitad del sobrante, así queda centrado. El último pulso nunca llega
           al final del compás —lo que sobra es su duración—, y dejar la barra
