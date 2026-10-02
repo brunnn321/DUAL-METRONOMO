@@ -88,7 +88,17 @@ function synthClick(ctx, time, soundKey, volume, pan = 0) {
 // dos filas y empujaba el panel de práctica fuera de la pantalla; un <select>
 // es un solo control, se elige escribiendo la cifra con el teclado y no admite
 // valores inválidos.
-function NumberSelect({ label, value, values, onChange, accent }) {
+// Nombre del grupo irregular que se forma al partir el pulso en N partes. El
+// denominador del compás solo admite potencias de 2 —redonda, blanca, negra,
+// corchea, semicorchea—, así que los quintillos y los sietesillos no pueden
+// vivir ahí: son una subdivisión del pulso, y es acá donde se eligen.
+const NOMBRE_SUBDIV = {
+  1:"sin subdividir", 2:"dosillo", 3:"tresillo", 4:"cuatrillo", 5:"quintillo",
+  6:"seisillo", 7:"sietesillo", 8:"ochillo", 9:"nuevesillo", 10:"diecisillo",
+};
+const nombreSubdiv = (n) => NOMBRE_SUBDIV[n] ?? `${n} partes`;
+
+function NumberSelect({ label, value, values, onChange, accent, nombres }) {
   return (
     <div style={{ display:"flex", alignItems:"center", gap:SP.sm }}>
       {label && (
@@ -99,7 +109,9 @@ function NumberSelect({ label, value, values, onChange, accent }) {
         fontFamily:"'JetBrains Mono',monospace", fontSize:FS.body, fontWeight:700,
         padding:"6px 10px", outline:"none", cursor:"pointer", minWidth:66,
       }}>
-        {values.map((v) => <option key={v} value={v}>{v}</option>)}
+        {values.map((v) => (
+          <option key={v} value={v}>{nombres ? `${v} · ${nombres(v)}` : v}</option>
+        ))}
       </select>
     </div>
   );
@@ -969,7 +981,7 @@ function MetronomePanel({ color, state, onChange, running, onToggle, measures, b
 
       <div style={{ display:"flex", alignItems:"center", gap:SP.md, flexWrap:"wrap" }}>
         <NumberSelect label="SUBDIV" value={subdivision} values={FIGURE_VALUES}
-          onChange={(v) => onChange({ subdivision: v })} accent={accent} />
+          onChange={(v) => onChange({ subdivision: v })} accent={accent} nombres={nombreSubdiv} />
         {subdivision > 1 && (
           <span style={etiqueta()}>
             CLIC EN UN PUNTO = ACENTO
@@ -1292,7 +1304,9 @@ function SequenceColumn({ steps, onSteps, on, onToggle, pos, sel, onSel, accent,
               <span style={{ color:TX.muted, fontSize:FS.small }}>×</span>
               <SeqNum stop value={s.num} values={range(1, MAX_NUM)} onChange={(v) => set(i, { num:v, groups:null })} />
               <span style={{ color:TX.muted, fontSize:FS.small }}>/</span>
-              <SeqNum stop value={s.den} values={DEN_VALUES} onChange={(v) => set(i, { den:v })} />
+              <span title="Figura del pulso: redonda 1, blanca 2, negra 4, corchea 8, semicorchea 16. Los quintillos y sietesillos no van acá, van en SUBDIV.">
+                <SeqNum stop value={s.den} values={DEN_VALUES} onChange={(v) => set(i, { den:v })} />
+              </span>
               <div style={{ flex:1, display:"flex", justifyContent:"flex-end", padding:"4px 0" }}>
                 <MeasureDots total={s.measures} current={live ? pos?.measureInStep : null} />
               </div>
