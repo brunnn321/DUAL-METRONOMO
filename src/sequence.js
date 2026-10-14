@@ -17,6 +17,10 @@ import { accentSet, effectiveGroups } from "./phase.js";
 export const DEN_VALUES = [1, 2, 4, 8, 16]; // denominadores que se pueden elegir
 export const MAX_NUM      = 21;  // mismo techo que el resto de la app (aksak llega a 21)
 export const MAX_MEASURES = 64;
+// En cuántas partes iguales se parte cada pulso del paso. 1 es sin subdividir,
+// 3 tresillo, 5 quintillo, 7 sietesillo. Es por paso, no por voz: así un mismo
+// loop puede llevar un compás en negras y el siguiente en quintillos.
+export const MAX_SUB = 21;
 
 // El ejemplo que pidió el usuario, como secuencia por defecto.
 export const DEFAULT_SEQUENCE = [
@@ -41,6 +45,7 @@ export function normalizeStep(step) {
     measures: clampInt(s.measures, 1, MAX_MEASURES, 1),
     num,
     den,
+    sub: clampInt(s.sub, 1, MAX_SUB, 1),
     // los grupos sólo valen si suman los pulsos del compás — mismo criterio que
     // usa el scheduler para los acentos aditivos
     groups: effectiveGroups(s.groups, num),
@@ -101,6 +106,7 @@ export function pulseAt(index, steps, bpm = 120) {
         pulseInMeasure,
         num: st.num,
         den: st.den,
+        sub: st.sub,
         groups: st.groups,
         muted: st.muted,
         accent: pulseInMeasure === 0 ? "strong" : acc.has(pulseInMeasure) ? "group" : "normal",

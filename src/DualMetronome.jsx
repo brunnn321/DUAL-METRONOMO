@@ -4,7 +4,7 @@ import { Play, Square, Volume2, VolumeX, ChevronRight, Lightbulb } from "lucide-
 import { lcm, polyCycleTarget, libreCycleTargets, cycleIndex, cycleRemaining, isSyncPulse, derivedBpm, reduceRatio, perceptualBand, accentSet, groupsFromIndices, effectiveGroups } from "./phase.js";
 import { loadSettings, saveSettings } from "./settings.js";
 // secuencia de compases (pestaña SECUENCIA de PRÁCTICA) — cálculo puro, testeable
-import { pulseAt, sequenceLabel, normalizeSequence, normalizeStep, normalizePresets, savePreset, deletePreset, DEFAULT_SEQUENCE, DEN_VALUES, MAX_NUM } from "./sequence.js";
+import { pulseAt, sequenceLabel, normalizeSequence, normalizeStep, normalizePresets, savePreset, deletePreset, DEFAULT_SEQUENCE, DEN_VALUES, MAX_NUM, MAX_SUB } from "./sequence.js";
 import { exportForState, downloadMidi } from "./midiExport.js";
 // geometría del visualizador de árbol — cálculo puro, testeable
 import { treeLayout, activePath, leafRadius, RADIO } from "./tree.js";
@@ -1304,8 +1304,12 @@ function SequenceColumn({ steps, onSteps, on, onToggle, pos, sel, onSel, accent,
               <span style={{ color:TX.muted, fontSize:FS.small }}>×</span>
               <SeqNum stop value={s.num} values={range(1, MAX_NUM)} onChange={(v) => set(i, { num:v, groups:null })} />
               <span style={{ color:TX.muted, fontSize:FS.small }}>/</span>
-              <span title="Figura del pulso: redonda 1, blanca 2, negra 4, corchea 8, semicorchea 16. Los quintillos y sietesillos no van acá, van en SUBDIV.">
+              <span title="Figura del pulso: redonda 1, blanca 2, negra 4, corchea 8, semicorchea 16. Los quintillos no van acá: van en el selector de al lado.">
                 <SeqNum stop value={s.den} values={DEN_VALUES} onChange={(v) => set(i, { den:v })} />
+              </span>
+              <span style={{ color:TX.muted, fontSize:FS.small }}>×</span>
+              <span title="En cuántas partes se divide cada pulso de este paso: 3 tresillo, 5 quintillo, 7 sietesillo.">
+                <SeqNum stop value={s.sub} values={range(1, MAX_SUB)} onChange={(v) => set(i, { sub:v })} />
               </span>
               <div style={{ flex:1, display:"flex", justifyContent:"flex-end", padding:"4px 0" }}>
                 <MeasureDots total={s.measures} current={live ? pos?.measureInStep : null} />
@@ -1884,6 +1888,17 @@ export default function DualMetronome() {
           if (first)                       synthClick(ctx, t, strongSound, volume, pan);
           else if (info.accent === "group") synthClick(ctx, t, strongSound, volume * SUB_ACCENT_LEVEL, pan);
           else                             synthClick(ctx, t, weakSound,   volume, pan);
+          // Las partes de adentro del pulso: el tresillo, el quintillo o el
+          // sietesillo del paso. Suenan un escalón por debajo, igual que las
+          // subdivisiones fuera de la secuencia, y caen repartiendo el pulso en
+          // partes iguales, así que el 1 del compás nunca se corre.
+          const partes = info.sub || 1;
+          if (partes > 1) {
+            const dentro = info.seconds / partes;
+            for (let k = 1; k < partes; k++) {
+              synthClick(ctx, t + k * dentro, weakSound, volume * SUB_LEVEL, pan);
+            }
+          }
         }
         // el dibujo lee de acá, con el mismo reloj que suena
         anotarPulso(pulsos, { t, idx: info.pulseInMeasure, total: info.num,

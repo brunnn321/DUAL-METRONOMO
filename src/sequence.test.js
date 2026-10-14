@@ -6,7 +6,14 @@ const EJEMPLO = DEFAULT_SEQUENCE;
 
 describe("normalizeStep", () => {
   it("rellena los campos que falten", () => {
-    expect(normalizeStep({})).toEqual({ measures:1, num:4, den:4, groups:[4], muted:false });
+    expect(normalizeStep({})).toEqual({ measures:1, num:4, den:4, sub:1, groups:[4], muted:false });
+  });
+
+  it("la subdivision del paso se recorta de 1 a 21", () => {
+    expect(normalizeStep({ sub: 5 }).sub).toBe(5);
+    expect(normalizeStep({ sub: 0 }).sub).toBe(1);
+    expect(normalizeStep({ sub: 99 }).sub).toBe(21);
+    expect(normalizeStep({ sub: "basura" }).sub).toBe(1);
   });
 
   it("recorta a los rangos de la app y cae en 4/4 ante basura", () => {
